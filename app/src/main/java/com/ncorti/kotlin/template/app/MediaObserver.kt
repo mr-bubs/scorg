@@ -1,13 +1,12 @@
 package com.ncorti.kotlin.template.app 
 
-
 import android.content.Context
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import android.util.Log
+import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -19,9 +18,9 @@ class MediaObserver(handler: Handler, private val context: Context) : ContentObs
         super.onChange(selfChange, uri)
         
         uri?.let { imageUri ->
-            // Small delay to ensure the file is fully written to disk by the OS
+            // Increased delay to 750ms. Sometimes OEM skins are slow to write the file to the database.
             CoroutineScope(Dispatchers.Main).launch {
-                delay(500) 
+                delay(750) 
                 
                 try {
                     val cursor = context.contentResolver.query(
@@ -35,21 +34,31 @@ class MediaObserver(handler: Handler, private val context: Context) : ContentObs
                             val pathColumnIndex = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
                             val path = c.getString(pathColumnIndex)
                             
-                            // Check if the new image is a screenshot
+                            // DIAGNOSTIC TOAST: Show us exactly what file path the app is seeing
+                            Handler(Looper.getMainLooper()).post {
+                                Toast.makeText(context, "Scorg sees: $path", Toast.LENGTH_LONG).show()
+                            }
+                            
                             if (path.lowercase().contains("screenshot")) {
-                                Log.d("Scorg", "Screenshot detected! Path: $path")
-                                
-                                // Launch the Popup UI on the Main Thread
                                 Handler(Looper.getMainLooper()).post {
                                     PopupOverlayUI(context).showPopup(path)
                                 }
                             }
+                        } else {
+                            // DIAGNOSTIC TOAST: The file exists, but Android blocked us from reading it
+                            Handler(Looper.getMainLooper()).post {
+                                Toast.makeText(context, "Scorg error: File empty or locked", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("Scorg", "Error reading media path", e)
+                    // DIAGNOSTIC TOAST: The code physically crashed
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(context, "Scorg crash: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
     }
 }
+
