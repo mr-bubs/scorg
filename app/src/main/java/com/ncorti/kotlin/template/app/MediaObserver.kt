@@ -1,12 +1,13 @@
 package com.ncorti.kotlin.template.app 
 
+
 import android.content.Context
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
-import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -18,7 +19,7 @@ class MediaObserver(handler: Handler, private val context: Context) : ContentObs
         super.onChange(selfChange, uri)
         
         uri?.let { imageUri ->
-            // We use a small delay because sometimes the file is created before it's fully written to disk
+            // Small delay to ensure the file is fully written to disk by the OS
             CoroutineScope(Dispatchers.Main).launch {
                 delay(500) 
                 
@@ -38,10 +39,10 @@ class MediaObserver(handler: Handler, private val context: Context) : ContentObs
                             if (path.lowercase().contains("screenshot")) {
                                 Log.d("Scorg", "Screenshot detected! Path: $path")
                                 
-                                // For now, we will pop up a text notification to prove it works
-                                Toast.makeText(context, "Scorg caught a screenshot!", Toast.LENGTH_LONG).show()
-                                
-                                // TODO: Launch the PopupOverlayUI here in the next step
+                                // Launch the Popup UI on the Main Thread
+                                Handler(Looper.getMainLooper()).post {
+                                    PopupOverlayUI(context).showPopup(path)
+                                }
                             }
                         }
                     }
