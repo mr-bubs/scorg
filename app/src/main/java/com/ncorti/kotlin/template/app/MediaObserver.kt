@@ -14,51 +14,55 @@ import kotlinx.coroutines.launch
 
 class MediaObserver(handler: Handler, private val context: Context) : ContentObserver(handler) {
 
+    // Notice we removed the 'uri?.let'. We don't care if the OS hides the URI from us anymore.
     override fun onChange(selfChange: Boolean, uri: Uri?) {
         super.onChange(selfChange, uri)
         
-        uri?.let { imageUri ->
-            // Increased delay to 750ms. Sometimes OEM skins are slow to write the file to the database.
-            CoroutineScope(Dispatchers.Main).launch {
-                delay(750) 
+        // 1. Prove the app actually woke up!
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, "Scorg woke up!", Toast.LENGTH_SHORT).show()
+        }
+
+        // Give the OS a full second to finish writing the heavy image file to the hard drive
+        CoroutineScope(Dispatchers.Main).launch {
+            delay(1000) 
+            
+            try {
+                // 2. We ask the database for the ONE most recently added image on the whole device
+                val projection = arrayOf(MediaStore.Images.Media.DATA)
+                val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC" // Sort by newest first
                 
-                try {
-                    val cursor = context.contentResolver.query(
-                        imageUri, 
-                        arrayOf(MediaStore.Images.Media.DATA), 
-                        null, null, null
-                    )
-                    
-                    cursor?.use { c ->
-                        if (c.moveToFirst()) {
-                            val pathColumnIndex = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
-                            val path = c.getString(pathColumnIndex)
-                            
-                            // DIAGNOSTIC TOAST: Show us exactly what file path the app is seeing
+                val cursor = context.contentResolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    null,
+                    null,
+                    sortOrder
+                )
+                
+                cursor?.use { c ->
+                    if (c.moveToFirst()) { // Get the very first item (the newest one)
+                        val pathColumnIndex = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                        val path = c.getString(pathColumnIndex)
+                        
+                        // Show us what file it found
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(context, "Newest file: $path", Toast.LENGTH_LONG).show()
+                        }
+                        
+                        // 3. Is it a screenshot? Trigger the popup!
+                        if (path.lowercase().contains("screenshot")) {
                             Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(context, "Scorg sees: $path", Toast.LENGTH_LONG).show()
-                            }
-                            
-                            if (path.lowercase().contains("screenshot")) {
-                                Handler(Looper.getMainLooper()).post {
-                                    PopupOverlayUI(context).showPopup(path)
-                                }
-                            }
-                        } else {
-                            // DIAGNOSTIC TOAST: The file exists, but Android blocked us from reading it
-                            Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(context, "Scorg error: File empty or locked", Toast.LENGTH_SHORT).show()
+                                PopupOverlayUI(context).showPopup(path)
                             }
                         }
                     }
-                } catch (e: Exception) {
-                    // DIAGNOSTIC TOAST: The code physically crashed
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(context, "Scorg crash: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
+                }
+            } catch (e: Exception) {
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, "Query crash: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 }
-
