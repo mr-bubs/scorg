@@ -5,56 +5,75 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.MediaStore
-import android.util.Log
 import android.widget.Toast
-import java.io.File
+import kotlinx.coroutines.*
 
-class FileMover(private val context: Context) {
+object FileMover {
 
-    fun moveToFolder(imagePath: String, folderName: String) {
-        val file = File(imagePath)
-        if (!file.exists()) return
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                // 1. Find the internal Android Database ID for this specific screenshot
-                val projection = arrayOf(MediaStore.Images.Media._ID)
-                val selection = "${MediaStore.Images.Media.DATA} = ?"
-                val selectionArgs = arrayOf(imagePath)
-                
-                val cursor = context.contentResolver.query(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    projection,
-                    selection,
-                    selectionArgs,
-                    null
-                )
-                
-                var imageUri: Uri? = null
-                cursor?.use {
-                    if (it.moveToFirst()) {
-                        val id = it.getLong(it.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
-                        imageUri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
-                    }
+    fun moveToFolder(context: Context, imageUri: Uri, folderName: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val success = tryMove(context, imageUri, folderName)
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    Toast.makeText(context, "✅ Moved to $folderName", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "❌ Move failed — check MANAGE_MEDIA permission", Toast.LENGTH_LONG).show()
                 }
-
-                // 2. Update the path to route it to the new subfolder
-                if (imageUri != null) {
-                    val values = ContentValues().apply {
-                        // Keeps it in DCIM/Screenshots, but nests it inside your custom folder
-                        put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/Screenshots/$folderName")
-                    }
-                    context.contentResolver.update(imageUri!!, values, null, null)
-                    Toast.makeText(context, "Moved to $folderName!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Log.e("Scorg", "Failed to move file", e)
-                Toast.makeText(context, "Error moving screenshot.", Toast.LENGTH_SHORT).show()
             }
-        } else {
-            Toast.makeText(context, "Scorg requires Android 10+ to organize files.", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun tryMove(context: Context, imageUri: Uri, folderName: String): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Screenshots/$folderName/")
+                    put(MediaStore.Images.Media.DISPLAY_NAME, getFileName(context, imageUri))
+                }
+                val rows = context.contentResolver.update(imageUri, values, null, null)
+                rows > 0
+            } else {
+                legacyMove(context, imageUri, folderName)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun legacyMove(context: Context, imageUri: Uri, folderName: String): Boolean {
+        return try {
+            val projection = arrayOf(MediaStore.Images.Media.DATA)
+            context.contentResolver.query(imageUri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return false
+                val sourcePath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA))
+                val sourceFile = java.io.File(sourcePath)
+                val destDir = java.io.File(sourceFile.parentFile, folderName).also { it.mkdirs() }
+                val destFile = java.io.File(destDir, sourceFile.name)
+                val moved = sourceFile.renameTo(destFile)
+                if (moved) {
+                    context.contentResolver.delete(imageUri, null, null)
+                    val values = ContentValues().apply {
+                        put(MediaStore.Images.Media.DATA, destFile.absolutePath)
+                    }
+                    context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                }
+                moved
+            } ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun getFileName(context: Context, uri: Uri): String? {
+        return try {
+            context.contentResolver.query(
+                uri, arrayOf(MediaStore.Images.Media.DISPLAY_NAME), null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME))
+                } else null
+            }
+        } catch (_: Exception) { null }
     }
 }
