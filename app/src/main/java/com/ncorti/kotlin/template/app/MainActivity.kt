@@ -150,8 +150,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun needsManageMedia(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
-        return !android.provider.MediaStore.canUserModifyMediaWithoutPrompt(this)
+        return !android.provider.MediaStore.canManageMedia(this)
     }
+
 
     private fun requestManageMedia() {
         if (!needsManageMedia()) {
