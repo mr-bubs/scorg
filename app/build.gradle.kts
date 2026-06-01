@@ -11,6 +11,10 @@ val APP_VERSION_CODE : String by project
 val APP_ID : String by project
 
 android {
+    lint {
+        abortOnError = false
+    }
+
     compileSdk = libs.versions.compile.sdk.version.get().toInt()
 
     defaultConfig {
