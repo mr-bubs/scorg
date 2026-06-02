@@ -53,7 +53,6 @@ object PopupOverlayUI {
         }
 
         val newBtn = makeFolderButton(context, "＋ New folder", Color.parseColor("#1565C0")) {
-            // THE FIX: We removed the ".apply" shortcut and wrote it out directly
             val intent = Intent(context, NewFolderActivity::class.java)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             intent.putExtra("screenshot_uri", screenshotUri.toString())
@@ -87,7 +86,7 @@ object PopupOverlayUI {
             gravity = Gravity.BOTTOM or Gravity.END
             x = 24
             y = 180 
-            width = 360
+            width = 600 // Increased width for tablets
         }
 
         try {
@@ -95,11 +94,10 @@ object PopupOverlayUI {
             overlayView = container
             dismissHandler.postDelayed(autoDismiss, 12_000L)
         } catch (e: SecurityException) {
-            Toast.makeText(
-                context,
-                "MIUI: Enable 'Display pop-up windows while running in background' for Scorg in Settings → Apps",
-                Toast.LENGTH_LONG
-            ).show()
+            // FIX: Safely concatenated string to avoid line-break compiler crashes
+            val msg = "MIUI: Enable 'Display pop-up windows while running in background' " +
+                      "for Scorg in Settings → Apps"
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(context, "Popup error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
