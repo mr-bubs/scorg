@@ -1,5 +1,4 @@
-package com.ncorti.kotlin.template.app 
-
+package com.ncorti.kotlin.template.app
 
 import android.content.Context
 import android.database.ContentObserver
