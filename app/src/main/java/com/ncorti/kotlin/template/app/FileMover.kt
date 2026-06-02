@@ -1,5 +1,4 @@
-package com.ncorti.kotlin.template.app 
-
+package com.ncorti.kotlin.template.app
 
 import android.content.ContentValues
 import android.content.Context
