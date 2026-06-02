@@ -53,10 +53,11 @@ object PopupOverlayUI {
         }
 
         val newBtn = makeFolderButton(context, "＋ New folder", Color.parseColor("#1565C0")) {
-            val intent = Intent(context, NewFolderActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                putExtra("screenshot_uri", screenshotUri.toString())
-            }
+            // THE FIX: We removed the ".apply" shortcut and wrote it out directly
+            val intent = Intent(context, NewFolderActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            intent.putExtra("screenshot_uri", screenshotUri.toString())
+            
             context.startActivity(intent)
             dismiss()
         }
