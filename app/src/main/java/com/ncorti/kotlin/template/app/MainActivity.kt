@@ -153,7 +153,6 @@ class MainActivity : AppCompatActivity() {
         return !android.provider.MediaStore.canManageMedia(this)
     }
 
-
     private fun requestManageMedia() {
         if (!needsManageMedia()) {
             requestNotificationPermission()
