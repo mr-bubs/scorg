@@ -83,6 +83,21 @@ class MainActivity : AppCompatActivity() {
             textSize = 16f
             setOnClickListener { checkAndRequestAll() }
         }
+        
+        // THE NEW DIAGNOSTIC TEST BUTTON
+        val testBtn = Button(this).apply {
+            text = "🧪 Test Popup (Debug)"
+            setBackgroundColor(android.graphics.Color.parseColor("#4A148C"))
+            setTextColor(android.graphics.Color.WHITE)
+            setOnClickListener {
+                if (!Settings.canDrawOverlays(this@MainActivity)) {
+                    toast("❌ Overlay permission not granted - tap Start Scorg first")
+                    return@setOnClickListener
+                }
+                // Fires the popup directly using a fake dummy file path
+                PopupOverlayUI.show(applicationContext, Uri.parse("content://test/0"))
+            }
+        }
 
         val manageBtn = Button(this).apply {
             text = "Manage Folders"
@@ -96,6 +111,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(subtitle)
         layout.addView(statusText)
         layout.addView(startBtn)
+        layout.addView(testBtn) // Added to screen
         layout.addView(manageBtn)
         setContentView(layout)
     }
