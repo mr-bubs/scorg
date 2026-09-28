@@ -20,14 +20,11 @@ class ScreenshotDetectorService : Service() {
         DiagnosticLog.add(this, "Service.onCreate")
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-        DiagnosticLog.add(this, "Foreground notification started")
-
+        
         mediaObserver = MediaObserver(this, handler) { uri ->
-            DiagnosticLog.add(this, "Service received screenshot callback: $uri")
             try {
                 PopupOverlayUI.show(this, uri)
-                DiagnosticLog.add(this, "PopupOverlayUI.show invoked successfully")
-            } catch (t: Throwable) {
+                            } catch (t: Throwable) {
                 DiagnosticLog.add(this, "Popup invocation FAILED: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
@@ -83,7 +80,7 @@ class ScreenshotDetectorService : Service() {
     private fun buildNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Scorg")
-            .setContentText("📸 Watching for screenshots...")
+            .setContentText("Watching for screenshots")
             .setSmallIcon(android.R.drawable.ic_menu_gallery)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
