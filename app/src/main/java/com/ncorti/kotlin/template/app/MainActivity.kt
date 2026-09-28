@@ -21,8 +21,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val storageLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
-        if (!results.values.any { it }) toast("Storage denied — file moving won't work")
+        DiagnosticLog.add(this, "Media permission result: $results")
+        DiagnosticLog.add(this, "Media access after request: ${mediaAccessStatus()}")
+        if (mediaAccessStatus() == "DENIED") toast("Storage denied — screenshot reading won't work")
         requestManageMedia()
+        updateStatusText()
+        refreshDiagnostics()
     }
 
     private val manageMediaLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -35,7 +39,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        DiagnosticLog.add(this, "MainActivity.onCreate")
+        DiagnosticLog.add(this, "MainActivity.onCreate SDK=${Build.VERSION.SDK_INT}")
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -58,10 +62,17 @@ class MainActivity : AppCompatActivity() {
                 refreshDiagnostics()
             }
         }
+        val permissionBtn = Button(this).apply {
+            text = "🔐 Request Media Access"
+            setOnClickListener {
+                DiagnosticLog.add(this@MainActivity, "Manual media permission request; before=${mediaAccessStatus()}")
+                requestStoragePermission()
+            }
+        }
         val scanBtn = Button(this).apply {
             text = "🔎 Scan MediaStore Now"
             setOnClickListener {
-                DiagnosticLog.add(this@MainActivity, "Manual MediaStore scan requested from UI")
+                DiagnosticLog.add(this@MainActivity, "Manual MediaStore scan requested from UI; access=${mediaAccessStatus()}")
                 val intent = Intent(this@MainActivity, ScreenshotDetectorService::class.java).apply {
                     action = ScreenshotDetectorService.ACTION_SCAN_NOW
                 }
@@ -69,10 +80,10 @@ class MainActivity : AppCompatActivity() {
                 toast("Scan requested. Tap Refresh Diagnostics in 2 seconds.")
             }
         }
-        val refreshBtn = Button(this).apply { text = "🔄 Refresh Diagnostics"; setOnClickListener { refreshDiagnostics() } }
+        val refreshBtn = Button(this).apply { text = "🔄 Refresh Diagnostics"; setOnClickListener { updateStatusText(); refreshDiagnostics() } }
         val clearBtn = Button(this).apply {
             text = "🧹 Clear Diagnostics"
-            setOnClickListener { DiagnosticLog.clear(this@MainActivity); refreshDiagnostics() }
+            setOnClickListener { DiagnosticLog.clear(this@MainActivity); DiagnosticLog.add(this@MainActivity, "Media access now: ${mediaAccessStatus()}"); refreshDiagnostics() }
         }
         diagnosticText = TextView(this).apply {
             textSize = 11f
@@ -81,17 +92,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         content.addView(emoji); content.addView(title); content.addView(subtitle); content.addView(statusText)
-        content.addView(startBtn); content.addView(testBtn); content.addView(scanBtn); content.addView(refreshBtn); content.addView(clearBtn)
+        content.addView(startBtn); content.addView(testBtn); content.addView(permissionBtn); content.addView(scanBtn); content.addView(refreshBtn); content.addView(clearBtn)
         content.addView(diagnosticText)
 
         val scroll = ScrollView(this).apply { addView(content) }
         setContentView(scroll)
+        updateStatusText()
         refreshDiagnostics()
     }
 
     override fun onResume() {
         super.onResume()
-        DiagnosticLog.add(this, "MainActivity.onResume")
+        DiagnosticLog.add(this, "MainActivity.onResume mediaAccess=${mediaAccessStatus()}")
         updateStatusText()
         refreshDiagnostics()
     }
@@ -101,10 +113,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAndRequestAll() {
-        DiagnosticLog.add(this, "Start Scorg tapped")
+        DiagnosticLog.add(this, "Start Scorg tapped mediaAccess=${mediaAccessStatus()}")
         when {
             !Settings.canDrawOverlays(this) -> requestOverlay()
-            !hasStoragePermission() -> requestStoragePermission()
+            mediaAccessStatus() == "DENIED" -> requestStoragePermission()
             needsManageMedia() -> requestManageMedia()
             !hasNotificationPermission() -> requestNotificationPermission()
             else -> startScorgService()
@@ -116,15 +128,32 @@ class MainActivity : AppCompatActivity() {
         overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
     }
 
-    private fun hasStoragePermission(): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
-        else ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+    private fun mediaAccessStatus(): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) "FULL" else "DENIED"
+        }
+
+        val full = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+        if (full) return "FULL"
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            val partial = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+            if (partial) return "PARTIAL"
+        }
+
+        return "DENIED"
+    }
 
     private fun requestStoragePermission() {
-        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
-        else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        val perms = when {
+            Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+            else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        DiagnosticLog.add(this, "Requesting media permissions: ${perms.joinToString()}")
         storageLauncher.launch(perms)
     }
 
@@ -150,7 +179,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startScorgService() {
-        DiagnosticLog.add(this, "Starting ScreenshotDetectorService")
+        DiagnosticLog.add(this, "Starting ScreenshotDetectorService mediaAccess=${mediaAccessStatus()}")
         val intent = Intent(this, ScreenshotDetectorService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
         updateStatusText()
@@ -161,9 +190,8 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatusText() {
         val tv = findViewById<TextView>(android.R.id.message) ?: return
         val overlayOk = Settings.canDrawOverlays(this)
-        val storageOk = hasStoragePermission()
         val notificationOk = hasNotificationPermission()
-        tv.text = "Overlay: ${if (overlayOk) "✅" else "❌"}   Storage: ${if (storageOk) "✅" else "❌"}   Notifications: ${if (notificationOk) "✅" else "❌"}"
+        tv.text = "Overlay: ${if (overlayOk) "✅" else "❌"}   Media: ${mediaAccessStatus()}   Notifications: ${if (notificationOk) "✅" else "❌"}"
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
