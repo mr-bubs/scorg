@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.widget.Toast
 import kotlinx.coroutines.*
@@ -12,22 +13,36 @@ object FileMover {
 
     fun moveToFolder(context: Context, imageUri: Uri, folderName: String) {
         CoroutineScope(Dispatchers.IO).launch {
-            val success = tryMove(context, imageUri, folderName)
+            val success = if (
+                DocumentsContract.isDocumentUri(context, imageUri) &&
+                ScreenshotTreeAccess.hasTreeAccess(context)
+            ) {
+                DiagnosticLog.add(context, "Using SAF move path for uri=" + imageUri)
+                ScreenshotTreeAccess.moveToFolder(context, imageUri, folderName)
+            } else {
+                DiagnosticLog.add(context, "Using legacy MediaStore move path for uri=" + imageUri)
+                tryMediaStoreMove(context, imageUri, folderName)
+            }
+
             withContext(Dispatchers.Main) {
                 if (success) {
-                    Toast.makeText(context, "✅ Moved to $folderName", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "✅ Moved to " + folderName, Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "❌ Move failed — check MANAGE_MEDIA permission", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        context,
+                        "❌ Move failed — reselect the Screenshots folder in Scorg",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
     }
 
-    private fun tryMove(context: Context, imageUri: Uri, folderName: String): Boolean {
+    private fun tryMediaStoreMove(context: Context, imageUri: Uri, folderName: String): Boolean {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Screenshots/$folderName/")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Screenshots/" + folderName + "/")
                     put(MediaStore.Images.Media.DISPLAY_NAME, getFileName(context, imageUri))
                 }
                 val rows = context.contentResolver.update(imageUri, values, null, null)
@@ -36,6 +51,10 @@ object FileMover {
                 legacyMove(context, imageUri, folderName)
             }
         } catch (e: Exception) {
+            DiagnosticLog.add(
+                context,
+                "MediaStore move FAILED: " + e.javaClass.simpleName + ": " + e.message
+            )
             false
         }
     }
@@ -67,12 +86,18 @@ object FileMover {
     private fun getFileName(context: Context, uri: Uri): String? {
         return try {
             context.contentResolver.query(
-                uri, arrayOf(MediaStore.Images.Media.DISPLAY_NAME), null, null, null
+                uri,
+                arrayOf(MediaStore.Images.Media.DISPLAY_NAME),
+                null,
+                null,
+                null
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME))
                 } else null
             }
-        } catch (_: Exception) { null }
+        } catch (_: Exception) {
+            null
+        }
     }
 }
