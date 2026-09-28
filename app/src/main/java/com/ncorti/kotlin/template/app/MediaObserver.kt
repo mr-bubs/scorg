@@ -14,28 +14,40 @@ class MediaObserver(
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var debounceJob: Job? = null
-    private var lastProcessedSafUri: String? = null
+    private var lastProcessedSafUri: String? =
+        ScreenshotTreeAccess.getLastProcessedUri(context)
 
     override fun onChange(selfChange: Boolean, uri: Uri?) {
         super.onChange(selfChange, uri)
-        DiagnosticLog.add(
-            context,
-            "ContentObserver.onChange selfChange=" + selfChange + " mediaUri=" + uri
-        )
+
+        val suppressedFor = ScreenshotTreeAccess.observerSuppressionRemainingMs()
 
         debounceJob?.cancel()
         debounceJob = scope.launch {
-            delay(250L)
+            if (suppressedFor > 0L) {
+                DiagnosticLog.add(
+                    context,
+                    "Observer event during SCORG move; deferring scan by " +
+                        suppressedFor + "ms"
+                )
+                delay(suppressedFor + 100L)
+            } else {
+                delay(150L)
+            }
+
             findRecentSafScreenshot()
         }
     }
 
     fun scanNow() {
         scope.launch {
-            DiagnosticLog.add(context, "Manual SAF screenshot-folder scan started")
+            DiagnosticLog.add(context, "Manual screenshot-folder scan started")
 
             if (!ScreenshotTreeAccess.hasTreeAccess(context)) {
-                DiagnosticLog.add(context, "Manual SAF scan FAILED: Screenshots folder is not granted")
+                DiagnosticLog.add(
+                    context,
+                    "Manual scan FAILED: Screenshots folder is not granted"
+                )
                 return@launch
             }
 
@@ -45,12 +57,11 @@ class MediaObserver(
             )
 
             if (entry == null) {
-                DiagnosticLog.add(context, "Manual SAF scan found no screenshot")
+                DiagnosticLog.add(context, "Manual scan found no screenshot")
                 return@launch
             }
 
-            lastProcessedSafUri = entry.uri.toString()
-            dispatchScreenshot(entry.uri, "manual SAF scan")
+            processEntry(entry, "manual scan")
         }
     }
 
@@ -58,56 +69,65 @@ class MediaObserver(
         if (!ScreenshotTreeAccess.hasTreeAccess(context)) {
             DiagnosticLog.add(
                 context,
-                "Screenshot event detected but SAF Screenshots folder access is missing"
+                "Screenshot event detected but Screenshots folder access is missing"
             )
             return
         }
 
-        val waits = longArrayOf(0L, 300L, 500L, 800L, 1200L, 2000L)
+        val waits = longArrayOf(0L, 250L, 450L, 700L, 1_000L)
 
         for (index in waits.indices) {
             val waitMs = waits[index]
             if (waitMs > 0L) delay(waitMs)
-
-            DiagnosticLog.add(
-                context,
-                "SAF screenshot lookup attempt=" + (index + 1) + "/" + waits.size
-            )
 
             val entry = ScreenshotTreeAccess.findNewestScreenshot(
                 context = context,
                 recentOnly = true
             ) ?: continue
 
-            val key = entry.uri.toString()
-            if (key == lastProcessedSafUri) {
-                DiagnosticLog.add(
-                    context,
-                    "SAF screenshot already processed uri=" + entry.uri
-                )
+            if (processEntry(entry, "automatic lookup")) {
                 return
             }
-
-            lastProcessedSafUri = key
-            DiagnosticLog.add(
-                context,
-                "SAF screenshot detected name=" + entry.name + " uri=" + entry.uri
-            )
-            dispatchScreenshot(entry.uri, "automatic SAF lookup")
-            return
         }
 
         DiagnosticLog.add(
             context,
-            "MediaStore event fired but no new screenshot became visible in granted SAF folder"
+            "Screenshot signal received but no new root screenshot was found"
         )
     }
 
-    private fun dispatchScreenshot(uri: Uri, source: String) {
+    private fun processEntry(
+        entry: ScreenshotTreeAccess.ScreenshotEntry,
+        source: String
+    ): Boolean {
+        val key = entry.uri.toString()
+
+        if (key == lastProcessedSafUri) {
+            DiagnosticLog.add(
+                context,
+                "Ignoring already-processed screenshot uri=" + entry.uri
+            )
+            return true
+        }
+
+        lastProcessedSafUri = key
+        ScreenshotTreeAccess.markProcessed(context, entry.uri)
+
+        DiagnosticLog.add(
+            context,
+            "Screenshot ready name=" + entry.name +
+                " source=" + source
+        )
+
+        dispatchScreenshot(entry.uri)
+        return true
+    }
+
+    private fun dispatchScreenshot(uri: Uri) {
         scope.launch(Dispatchers.Main) {
             DiagnosticLog.add(
                 context,
-                "Invoking overlay callback for SAF uri=" + uri + " source=" + source
+                "Showing sort popup for uri=" + uri
             )
             onScreenshotDetected(uri)
         }
