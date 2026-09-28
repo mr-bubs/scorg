@@ -164,7 +164,6 @@ object ScreenshotTreeAccess {
                     directFileCount++
 
                     val name = cursor.getString(nameIndex).orEmpty()
-                    if (!looksLikeScreenshot(name)) continue
 
                     val modified = if (
                         modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)
@@ -209,7 +208,7 @@ object ScreenshotTreeAccess {
         )
 
         val result = newest ?: run {
-            DiagnosticLog.add(context, "SAF scan: no screenshot-like files found")
+            DiagnosticLog.add(context, "SAF scan: no files found in selected folder")
             return null
         }
 
@@ -235,11 +234,6 @@ object ScreenshotTreeAccess {
 
         return result
     }
-
-    private fun looksLikeScreenshot(name: String): Boolean =
-        name.contains("screenshot", ignoreCase = true) ||
-            name.contains("screen_shot", ignoreCase = true) ||
-            name.contains("screencap", ignoreCase = true)
 
     fun moveToFolder(
         context: Context,
