@@ -7,144 +7,203 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.*
+import android.view.View
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var statusText: TextView
+    private lateinit var folderButton: Button
+    private lateinit var debugContainer: LinearLayout
     private lateinit var diagnosticText: TextView
+
+    private var continueStartAfterFolderPicker = false
 
     private val overlayLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        updateStatusText()
-        refreshDiagnostics()
+        refreshUi()
+        if (Settings.canDrawOverlays(this)) {
+            checkAndStart()
+        } else {
+            toast("Scorg needs permission to show the sorting popup")
+        }
+    }
+
+    private val mediaPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        DiagnosticLog.add(
+            this,
+            "Detection permission result=" + detectionPermissionStatus()
+        )
+        refreshUi()
+
+        if (hasDetectionPermission()) {
+            checkAndStart()
+        } else {
+            toast("Photo permission is needed to detect new screenshots")
+        }
     }
 
     private val screenshotFolderLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
+        val shouldContinue = continueStartAfterFolderPicker
+        continueStartAfterFolderPicker = false
+
         if (uri == null) {
-            DiagnosticLog.add(this, "SAF folder picker cancelled")
+            DiagnosticLog.add(this, "Screenshots folder picker cancelled")
             toast("Screenshots folder was not selected")
-            updateStatusText()
-            refreshDiagnostics()
+            refreshUi()
             return@registerForActivityResult
         }
 
-        val saved = ScreenshotTreeAccess.saveTreeUri(this, uri)
-        if (saved) {
-            toast("✅ Screenshots folder connected")
+        if (ScreenshotTreeAccess.saveTreeUri(this, uri)) {
             DiagnosticLog.add(
                 this,
-                "SAF folder connected label=" + ScreenshotTreeAccess.treeLabel(this)
+                "Screenshots folder connected label=" +
+                    ScreenshotTreeAccess.treeLabel(this)
             )
+            toast("✅ Screenshots folder connected")
+            refreshUi()
+
+            if (shouldContinue) {
+                checkAndStart()
+            }
         } else {
             toast("❌ Could not keep access to that folder")
+            refreshUi()
         }
-
-        updateStatusText()
-        refreshDiagnostics()
     }
 
     private val notificationLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) {
-        startScorgService()
+    ) { granted ->
+        refreshUi()
+
+        if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            startScorgService()
+        } else {
+            toast("Notifications are required for Scorg's background watcher")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         DiagnosticLog.add(
             this,
             "MainActivity.onCreate SDK=" + Build.VERSION.SDK_INT +
-                " SAF=" + ScreenshotTreeAccess.hasTreeAccess(this)
+                " folderAccess=" + ScreenshotTreeAccess.hasTreeAccess(this)
         )
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(56, 80, 56, 56)
+            setPadding(dp(28), dp(40), dp(28), dp(32))
         }
 
         val emoji = TextView(this).apply {
             text = "📸"
-            textSize = 48f
-            setPadding(0, 0, 0, 8)
+            textSize = 42f
         }
 
         val title = TextView(this).apply {
             text = "Scorg"
-            textSize = 32f
+            textSize = 30f
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
 
         val subtitle = TextView(this).apply {
-            text = "Screenshot organiser — SAF prototype"
-            textSize = 14f
-            setTextColor(android.graphics.Color.GRAY)
-            setPadding(0, 0, 0, 32)
-        }
-
-        val statusText = TextView(this).apply {
-            id = android.R.id.message
-            text = "Choose your Screenshots folder, then start Scorg"
+            text = "Sort screenshots the moment you take them."
             textSize = 15f
-            setPadding(0, 0, 0, 16)
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, dp(4), 0, dp(24))
         }
 
-        val chooseFolderBtn = Button(this).apply {
-            text = "📁 Choose Screenshots Folder"
+        statusText = TextView(this).apply {
+            textSize = 14f
+            setPadding(0, 0, 0, dp(18))
+        }
+
+        folderButton = Button(this).apply {
             setOnClickListener {
-                DiagnosticLog.add(this@MainActivity, "Opening SAF Screenshots folder picker")
-                screenshotFolderLauncher.launch(null)
+                continueStartAfterFolderPicker = false
+                openScreenshotFolderPicker()
             }
         }
 
-        val startBtn = Button(this).apply {
+        val startButton = Button(this).apply {
             text = "Start Scorg"
             textSize = 16f
-            setOnClickListener { checkAndStart() }
+            setOnClickListener {
+                checkAndStart()
+            }
         }
 
-        val testBtn = Button(this).apply {
-            text = "🧪 Test Popup With Latest Screenshot"
+        val explanation = TextView(this).apply {
+            text =
+                "Scorg only reads and moves files inside the Screenshots folder " +
+                    "you choose. Your category folders live inside it."
+            textSize = 12f
+            setTextColor(android.graphics.Color.GRAY)
+            setPadding(0, dp(14), 0, dp(18))
+        }
+
+        val diagnosticsToggle = Button(this).apply {
+            text = "Diagnostics"
+            setOnClickListener {
+                val showing = debugContainer.visibility == View.VISIBLE
+                debugContainer.visibility = if (showing) View.GONE else View.VISIBLE
+                text = if (showing) "Diagnostics" else "Hide diagnostics"
+                if (!showing) {
+                    refreshDiagnostics()
+                }
+            }
+        }
+
+        debugContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+
+        val testPopupButton = Button(this).apply {
+            text = "Test popup with latest screenshot"
             setOnClickListener {
                 if (!Settings.canDrawOverlays(this@MainActivity)) {
-                    toast("❌ Overlay permission not granted — tap Start Scorg first")
+                    toast("Overlay permission is not granted")
                     return@setOnClickListener
                 }
 
                 val entry = ScreenshotTreeAccess.findNewestScreenshot(
-                    context = this@MainActivity,
+                    this@MainActivity,
                     recentOnly = false
                 )
 
                 if (entry == null) {
-                    toast("No screenshot is visible in the selected folder")
-                    DiagnosticLog.add(this@MainActivity, "Manual popup test found no SAF screenshot")
-                    refreshDiagnostics()
-                    return@setOnClickListener
+                    toast("No screenshot found in the selected folder")
+                } else {
+                    DiagnosticLog.add(
+                        this@MainActivity,
+                        "Manual popup test uri=" + entry.uri
+                    )
+                    PopupOverlayUI.show(applicationContext, entry.uri)
                 }
 
-                DiagnosticLog.add(
-                    this@MainActivity,
-                    "Manual popup test using SAF uri=" + entry.uri
-                )
-                PopupOverlayUI.show(applicationContext, entry.uri)
                 refreshDiagnostics()
             }
         }
 
-        val scanBtn = Button(this).apply {
-            text = "🔎 Scan Screenshots Folder Now"
+        val scanButton = Button(this).apply {
+            text = "Scan screenshots folder now"
             setOnClickListener {
-                DiagnosticLog.add(
-                    this@MainActivity,
-                    "Manual SAF scan requested from UI"
-                )
-
                 val intent = Intent(
                     this@MainActivity,
                     ScreenshotDetectorService::class.java
@@ -158,27 +217,22 @@ class MainActivity : AppCompatActivity() {
                     startService(intent)
                 }
 
-                toast("SAF scan requested. Tap Refresh Diagnostics in 2 seconds.")
+                toast("Scan requested")
             }
         }
 
-        val refreshBtn = Button(this).apply {
-            text = "🔄 Refresh Diagnostics"
+        val refreshButton = Button(this).apply {
+            text = "Refresh diagnostics"
             setOnClickListener {
-                updateStatusText()
+                refreshUi()
                 refreshDiagnostics()
             }
         }
 
-        val clearBtn = Button(this).apply {
-            text = "🧹 Clear Diagnostics"
+        val clearButton = Button(this).apply {
+            text = "Clear diagnostics"
             setOnClickListener {
                 DiagnosticLog.clear(this@MainActivity)
-                DiagnosticLog.add(
-                    this@MainActivity,
-                    "SAF access now=" + ScreenshotTreeAccess.hasTreeAccess(this@MainActivity) +
-                        " folder=" + ScreenshotTreeAccess.treeLabel(this@MainActivity)
-                )
                 refreshDiagnostics()
             }
         }
@@ -186,76 +240,171 @@ class MainActivity : AppCompatActivity() {
         diagnosticText = TextView(this).apply {
             textSize = 11f
             setTextIsSelectable(true)
-            setPadding(0, 24, 0, 24)
+            setPadding(0, dp(12), 0, 0)
         }
+
+        debugContainer.addView(testPopupButton)
+        debugContainer.addView(scanButton)
+        debugContainer.addView(refreshButton)
+        debugContainer.addView(clearButton)
+        debugContainer.addView(diagnosticText)
 
         content.addView(emoji)
         content.addView(title)
         content.addView(subtitle)
         content.addView(statusText)
-        content.addView(chooseFolderBtn)
-        content.addView(startBtn)
-        content.addView(testBtn)
-        content.addView(scanBtn)
-        content.addView(refreshBtn)
-        content.addView(clearBtn)
-        content.addView(diagnosticText)
+        content.addView(folderButton)
+        content.addView(startButton)
+        content.addView(explanation)
+        content.addView(diagnosticsToggle)
+        content.addView(debugContainer)
 
-        val scroll = ScrollView(this).apply {
-            addView(content)
-        }
+        setContentView(
+            ScrollView(this).apply {
+                addView(content)
+            }
+        )
 
-        setContentView(scroll)
-        updateStatusText()
-        refreshDiagnostics()
+        refreshUi()
     }
 
     override fun onResume() {
         super.onResume()
-        DiagnosticLog.add(
-            this,
-            "MainActivity.onResume SAF=" + ScreenshotTreeAccess.hasTreeAccess(this) +
-                " mediaAccess=" + mediaAccessStatus()
-        )
-        updateStatusText()
-        refreshDiagnostics()
+        refreshUi()
+
+        if (::debugContainer.isInitialized &&
+            debugContainer.visibility == View.VISIBLE
+        ) {
+            refreshDiagnostics()
+        }
     }
 
     private fun checkAndStart() {
         DiagnosticLog.add(
             this,
-            "Start Scorg tapped SAF=" + ScreenshotTreeAccess.hasTreeAccess(this)
+            "Start requested overlay=" + Settings.canDrawOverlays(this) +
+                " detection=" + detectionPermissionStatus() +
+                " folder=" + ScreenshotTreeAccess.hasTreeAccess(this) +
+                " notifications=" + hasNotificationPermission()
         )
 
         when {
-            !Settings.canDrawOverlays(this) -> requestOverlay()
+            !Settings.canDrawOverlays(this) -> requestOverlayPermission()
+
+            !hasDetectionPermission() -> requestDetectionPermission()
+
             !ScreenshotTreeAccess.hasTreeAccess(this) -> {
-                toast("Choose the DCIM/Screenshots folder first")
-                screenshotFolderLauncher.launch(null)
+                continueStartAfterFolderPicker = true
+                openScreenshotFolderPicker()
             }
+
             !hasNotificationPermission() -> requestNotificationPermission()
+
             else -> startScorgService()
         }
     }
 
-    private fun requestOverlay() {
-        toast("Grant 'Draw over other apps' — tap Scorg in the list")
-        val intent = Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:" + packageName)
+    private fun requestOverlayPermission() {
+        toast("Allow Scorg to display the sorting popup")
+        overlayLauncher.launch(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + packageName)
+            )
         )
-        overlayLauncher.launch(intent)
+    }
+
+    private fun openScreenshotFolderPicker() {
+        DiagnosticLog.add(this, "Opening Screenshots folder picker")
+        screenshotFolderLauncher.launch(null)
+    }
+
+    private fun hasDetectionPermission(): Boolean {
+        return when {
+            Build.VERSION.SDK_INT >= 34 -> {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_MEDIA_IMAGES
+                ) == PackageManager.PERMISSION_GRANTED ||
+                    ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                    ) == PackageManager.PERMISSION_GRANTED
+            }
+
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_MEDIA_IMAGES
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+
+            else -> {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+    }
+
+    private fun detectionPermissionStatus(): String {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val full = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.READ_MEDIA_IMAGES
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (full) return "FULL"
+
+            if (Build.VERSION.SDK_INT >= 34) {
+                val partial = ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                ) == PackageManager.PERMISSION_GRANTED
+
+                if (partial) return "PARTIAL"
+            }
+
+            return "DENIED"
+        }
+
+        return if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            "FULL"
+        } else {
+            "DENIED"
+        }
+    }
+
+    private fun requestDetectionPermission() {
+        val permissions = when {
+            Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES
+            )
+
+            else -> arrayOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+        }
+
+        mediaPermissionLauncher.launch(permissions)
     }
 
     private fun hasNotificationPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
     }
 
     private fun requestNotificationPermission() {
@@ -268,80 +417,51 @@ class MainActivity : AppCompatActivity() {
 
     private fun startScorgService() {
         if (!ScreenshotTreeAccess.hasTreeAccess(this)) {
-            toast("Screenshots folder access is missing")
+            toast("Reconnect your Screenshots folder")
             return
         }
 
-        DiagnosticLog.add(
-            this,
-            "Starting ScreenshotDetectorService SAF folder=" +
-                ScreenshotTreeAccess.treeLabel(this)
-        )
-
         val intent = Intent(this, ScreenshotDetectorService::class.java)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {
             startService(intent)
         }
 
-        updateStatusText()
-        refreshDiagnostics()
-        toast("✅ Scorg is watching — take a screenshot to test!")
+        DiagnosticLog.add(
+            this,
+            "Scorg watcher started folder=" +
+                ScreenshotTreeAccess.treeLabel(this)
+        )
+
+        toast("✅ Scorg is watching for screenshots")
+        refreshUi()
     }
 
-    private fun updateStatusText() {
-        val tv = findViewById<TextView>(android.R.id.message) ?: return
-        val overlayOk = Settings.canDrawOverlays(this)
-        val safOk = ScreenshotTreeAccess.hasTreeAccess(this)
-        val notificationOk = hasNotificationPermission()
+    private fun refreshUi() {
+        if (!::statusText.isInitialized) return
 
-        val folder = if (safOk) {
+        val overlay = if (Settings.canDrawOverlays(this)) "✅" else "○"
+        val detection = if (hasDetectionPermission()) "✅" else "○"
+        val folder = if (ScreenshotTreeAccess.hasTreeAccess(this)) {
             "✅ " + ScreenshotTreeAccess.treeLabel(this)
         } else {
-            "❌ Not selected"
+            "○ Not selected"
         }
+        val notifications = if (hasNotificationPermission()) "✅" else "○"
 
-        val overlayLabel = if (overlayOk) "✅" else "❌"
-        val notificationLabel = if (notificationOk) "✅" else "❌"
+        statusText.text =
+            "Popup " + overlay +
+                "   Detection " + detection +
+                "   Notifications " + notifications +
+                "\nScreenshots folder: " + folder
 
-        tv.text =
-            "Overlay: " + overlayLabel +
-                "   Screenshots: " + folder +
-                "   Notifications: " + notificationLabel
-    }
-
-    private fun mediaAccessStatus(): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return if (
-                ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                "FULL"
-            } else {
-                "DENIED"
-            }
+        folderButton.text = if (ScreenshotTreeAccess.hasTreeAccess(this)) {
+            "Change Screenshots Folder"
+        } else {
+            "Choose Screenshots Folder"
         }
-
-        val full = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.READ_MEDIA_IMAGES
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (full) return "FULL"
-
-        if (Build.VERSION.SDK_INT >= 34) {
-            val partial = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-            ) == PackageManager.PERMISSION_GRANTED
-
-            if (partial) return "PARTIAL"
-        }
-
-        return "DENIED"
     }
 
     private fun refreshDiagnostics() {
@@ -353,4 +473,7 @@ class MainActivity : AppCompatActivity() {
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 }
