@@ -2,7 +2,7 @@ name: Build Scorg APK
 
 on:
   push:
-    branches: [ "main", "diagnostic-screenshot-detection" ]
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -29,9 +29,16 @@ jobs:
       run: |
         mkdir -p .signing
         if [ ! -f .signing/scorg-debug.keystore ]; then
-          keytool -genkeypair             -keystore .signing/scorg-debug.keystore             -storepass android             -alias androiddebugkey             -keypass android             -dname "CN=Android Debug,O=Android,C=US"             -keyalg RSA             -keysize 2048             -validity 10000
+          keytool -genkeypair \
+            -keystore .signing/scorg-debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000
         fi
-        keytool -list           -keystore .signing/scorg-debug.keystore           -storepass android           -alias androiddebugkey
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
