@@ -5,7 +5,11 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
-import android.widget.*
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
 
 class NewFolderActivity : Activity() {
 
@@ -57,16 +61,40 @@ class NewFolderActivity : Activity() {
             setBackgroundColor(Color.parseColor("#1976D2"))
             setOnClickListener {
                 val name = editText.text.toString().trim()
-                if (name.isEmpty()) {
-                    Toast.makeText(this@NewFolderActivity, "Enter a folder name", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
+
+                when {
+                    name.isEmpty() -> {
+                        toast("Enter a folder name")
+                        return@setOnClickListener
+                    }
+
+                    name.length > 40 -> {
+                        toast("Keep folder names under 40 characters")
+                        return@setOnClickListener
+                    }
+
+                    name.contains("/") || name.contains("\\") -> {
+                        toast("Folder names can't contain / or \\")
+                        return@setOnClickListener
+                    }
                 }
-                
-                FolderManager.addFolder(this@NewFolderActivity, name)
-                
+
+                val added = FolderManager.addFolder(this@NewFolderActivity, name)
+                if (!added) {
+                    DiagnosticLog.add(
+                        this@NewFolderActivity,
+                        "New-folder request reused existing category=" + name
+                    )
+                }
+
                 screenshotUriStr?.let { uriStr ->
-                    FileMover.moveToFolder(this@NewFolderActivity, Uri.parse(uriStr), name)
+                    FileMover.moveToFolder(
+                        this@NewFolderActivity,
+                        Uri.parse(uriStr),
+                        name
+                    )
                 }
+
                 finish()
             }
         }
@@ -77,5 +105,9 @@ class NewFolderActivity : Activity() {
         layout.addView(editText)
         layout.addView(row)
         setContentView(layout)
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 }
