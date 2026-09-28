@@ -33,6 +33,7 @@ object ScreenshotTreeAccess {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(KEY_TREE_URI, uri.toString())
+                .remove(KEY_LAST_PROCESSED_URI)
                 .apply()
 
             val root = DocumentFile.fromTreeUri(context, uri)
