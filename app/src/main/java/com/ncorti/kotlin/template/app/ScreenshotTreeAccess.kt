@@ -118,7 +118,7 @@ object ScreenshotTreeAccess {
             "SAF newest name=${newest.name} modified=${newest.lastModified()} ageMs=$age uri=${newest.uri}"
         )
 
-        if (recentOnly && age > RECENT_WINDOW_MS) {
+        if (recentOnly && newest.lastModified() > 0L && age > RECENT_WINDOW_MS) {
             DiagnosticLog.add(context, "SAF newest file is older than recent window; ignoring")
             return null
         }
