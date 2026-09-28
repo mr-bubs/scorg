@@ -2,16 +2,21 @@ package com.ncorti.kotlin.template.app
 
 import android.content.Context
 import android.content.Intent
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
+import java.util.concurrent.atomic.AtomicLong
 
 object ScreenshotTreeAccess {
 
     private const val PREFS = "scorg_prefs"
     private const val KEY_TREE_URI = "screenshots_tree_uri"
+    private const val KEY_LAST_PROCESSED_URI = "last_processed_screenshot_uri"
     private const val RECENT_WINDOW_MS = 20_000L
+    private val suppressObserverUntil = AtomicLong(0L)
 
     data class ScreenshotEntry(
         val uri: Uri,
@@ -33,13 +38,16 @@ object ScreenshotTreeAccess {
             val root = DocumentFile.fromTreeUri(context, uri)
             DiagnosticLog.add(
                 context,
-                "SAF tree saved uri=$uri name=${root?.name} canRead=${root?.canRead()} canWrite=${root?.canWrite()}"
+                "SAF tree saved uri=" + uri +
+                    " name=" + root?.name +
+                    " canRead=" + root?.canRead() +
+                    " canWrite=" + root?.canWrite()
             )
             true
         } catch (t: Throwable) {
             DiagnosticLog.add(
                 context,
-                "SAF tree save FAILED: ${t.javaClass.simpleName}: ${t.message}"
+                "SAF tree save FAILED: " + t.javaClass.simpleName + ": " + t.message
             )
             false
         }
@@ -69,6 +77,29 @@ object ScreenshotTreeAccess {
         return DocumentFile.fromTreeUri(context, uri)?.name ?: "Selected folder"
     }
 
+    fun getLastProcessedUri(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_LAST_PROCESSED_URI, null)
+
+    fun markProcessed(context: Context, uri: Uri) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_LAST_PROCESSED_URI, uri.toString())
+            .apply()
+    }
+
+    fun suppressObserverEventsFor(durationMs: Long) {
+        val until = SystemClock.elapsedRealtime() + durationMs
+        while (true) {
+            val current = suppressObserverUntil.get()
+            if (current >= until) return
+            if (suppressObserverUntil.compareAndSet(current, until)) return
+        }
+    }
+
+    fun observerSuppressionRemainingMs(): Long =
+        (suppressObserverUntil.get() - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+
     fun findNewestScreenshot(
         context: Context,
         recentOnly: Boolean
@@ -78,57 +109,136 @@ object ScreenshotTreeAccess {
             return null
         }
 
-        val root = DocumentFile.fromTreeUri(context, treeUri) ?: run {
-            DiagnosticLog.add(context, "SAF scan failed: cannot open persisted tree uri=$treeUri")
+        val treeDocumentId = runCatching {
+            DocumentsContract.getTreeDocumentId(treeUri)
+        }.getOrElse {
+            DiagnosticLog.add(context, "SAF scan failed: invalid tree URI")
             return null
         }
 
-        val files = try {
-            root.listFiles().filter { it.isFile }
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            treeUri,
+            treeDocumentId
+        )
+
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+
+        var newest: ScreenshotEntry? = null
+        var directFileCount = 0
+
+        try {
+            context.contentResolver.query(
+                childrenUri,
+                projection,
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndexOrThrow(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID
+                )
+                val nameIndex = cursor.getColumnIndexOrThrow(
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME
+                )
+                val modifiedIndex = cursor.getColumnIndex(
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED
+                )
+                val mimeIndex = cursor.getColumnIndex(
+                    DocumentsContract.Document.COLUMN_MIME_TYPE
+                )
+
+                while (cursor.moveToNext()) {
+                    val mime = if (mimeIndex >= 0 && !cursor.isNull(mimeIndex)) {
+                        cursor.getString(mimeIndex)
+                    } else {
+                        ""
+                    }
+
+                    if (mime == DocumentsContract.Document.MIME_TYPE_DIR) continue
+                    directFileCount++
+
+                    val name = cursor.getString(nameIndex).orEmpty()
+                    if (!looksLikeScreenshot(name)) continue
+
+                    val modified = if (
+                        modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)
+                    ) {
+                        cursor.getLong(modifiedIndex)
+                    } else {
+                        0L
+                    }
+
+                    val documentId = cursor.getString(idIndex)
+                    val documentUri = DocumentsContract.buildDocumentUriUsingTree(
+                        treeUri,
+                        documentId
+                    )
+
+                    val candidate = ScreenshotEntry(
+                        uri = documentUri,
+                        name = name,
+                        lastModified = modified
+                    )
+
+                    if (
+                        newest == null ||
+                        candidate.lastModified > newest!!.lastModified
+                    ) {
+                        newest = candidate
+                    }
+                }
+            } ?: DiagnosticLog.add(context, "SAF children query returned null cursor")
         } catch (t: Throwable) {
             DiagnosticLog.add(
                 context,
-                "SAF listFiles FAILED: ${t.javaClass.simpleName}: ${t.message}"
+                "SAF children query FAILED: " + t.javaClass.simpleName + ": " + t.message
             )
             return null
         }
 
         DiagnosticLog.add(
             context,
-            "SAF scan root=${root.name} directFiles=${files.size} recentOnly=$recentOnly"
+            "SAF scan directFiles=" + directFileCount +
+                " recentOnly=" + recentOnly
         )
 
-        val screenshots = files.filter { file ->
-            val name = file.name.orEmpty()
-            name.contains("screenshot", ignoreCase = true) ||
-                name.contains("screen_shot", ignoreCase = true) ||
-                name.contains("screencap", ignoreCase = true)
-        }
-
-        val newest = screenshots.maxByOrNull { it.lastModified() } ?: run {
-            DiagnosticLog.add(context, "SAF scan: no screenshot-like files found in selected folder")
+        val result = newest ?: run {
+            DiagnosticLog.add(context, "SAF scan: no screenshot-like files found")
             return null
         }
 
         val now = System.currentTimeMillis()
-        val age = if (newest.lastModified() > 0L) now - newest.lastModified() else Long.MAX_VALUE
+        val age = if (result.lastModified > 0L) {
+            now - result.lastModified
+        } else {
+            Long.MAX_VALUE
+        }
 
         DiagnosticLog.add(
             context,
-            "SAF newest name=${newest.name} modified=${newest.lastModified()} ageMs=$age uri=${newest.uri}"
+            "SAF newest name=" + result.name +
+                " modified=" + result.lastModified +
+                " ageMs=" + age +
+                " uri=" + result.uri
         )
 
-        if (recentOnly && newest.lastModified() > 0L && age > RECENT_WINDOW_MS) {
+        if (recentOnly && result.lastModified > 0L && age > RECENT_WINDOW_MS) {
             DiagnosticLog.add(context, "SAF newest file is older than recent window; ignoring")
             return null
         }
 
-        return ScreenshotEntry(
-            uri = newest.uri,
-            name = newest.name.orEmpty(),
-            lastModified = newest.lastModified()
-        )
+        return result
     }
+
+    private fun looksLikeScreenshot(name: String): Boolean =
+        name.contains("screenshot", ignoreCase = true) ||
+            name.contains("screen_shot", ignoreCase = true) ||
+            name.contains("screencap", ignoreCase = true)
 
     fun moveToFolder(
         context: Context,
@@ -145,8 +255,12 @@ object ScreenshotTreeAccess {
 
         DiagnosticLog.add(
             context,
-            "SAF move requested source=${source.name} targetFolder=$folderName sourceUri=$sourceUri"
+            "SAF move requested source=" + source.name +
+                " targetFolder=" + folderName +
+                " sourceUri=" + sourceUri
         )
+
+        suppressObserverEventsFor(1_500L)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
@@ -157,18 +271,26 @@ object ScreenshotTreeAccess {
                     targetDir.uri
                 )
                 if (movedUri != null) {
-                    DiagnosticLog.add(context, "SAF moveDocument success movedUri=$movedUri")
+                    suppressObserverEventsFor(1_500L)
+                    DiagnosticLog.add(
+                        context,
+                        "SAF moveDocument success movedUri=" + movedUri
+                    )
                     return true
                 }
             } catch (t: Throwable) {
                 DiagnosticLog.add(
                     context,
-                    "SAF moveDocument FAILED: ${t.javaClass.simpleName}: ${t.message}; trying copy/delete"
+                    "SAF moveDocument FAILED: " +
+                        t.javaClass.simpleName + ": " + t.message +
+                        "; trying copy/delete"
                 )
             }
         }
 
-        return copyThenDelete(context, source, targetDir)
+        val copied = copyThenDelete(context, source, targetDir)
+        if (copied) suppressObserverEventsFor(1_500L)
+        return copied
     }
 
     private fun copyThenDelete(
@@ -190,13 +312,15 @@ object ScreenshotTreeAccess {
             val deleted = source.delete()
             DiagnosticLog.add(
                 context,
-                "SAF copy/delete result copied=true sourceDeleted=$deleted destination=${destination.uri}"
+                "SAF copy/delete copied=true sourceDeleted=" + deleted +
+                    " destination=" + destination.uri
             )
             deleted
         } catch (t: Throwable) {
             DiagnosticLog.add(
                 context,
-                "SAF copy/delete FAILED: ${t.javaClass.simpleName}: ${t.message}"
+                "SAF copy/delete FAILED: " +
+                    t.javaClass.simpleName + ": " + t.message
             )
             runCatching { destination.delete() }
             false
