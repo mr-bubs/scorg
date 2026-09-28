@@ -302,10 +302,13 @@ class MainActivity : AppCompatActivity() {
             "❌ Not selected"
         }
 
+        val overlayLabel = if (overlayOk) "✅" else "❌"
+        val notificationLabel = if (notificationOk) "✅" else "❌"
+
         tv.text =
-            "Overlay: " + if (overlayOk) "✅" else "❌" +
+            "Overlay: " + overlayLabel +
                 "   Screenshots: " + folder +
-                "   Notifications: " + if (notificationOk) "✅" else "❌"
+                "   Notifications: " + notificationLabel
     }
 
     private fun mediaAccessStatus(): String {
