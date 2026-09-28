@@ -2,7 +2,9 @@ package com.ncorti.kotlin.template.app
 
 import android.content.Context
 import android.database.ContentObserver
+import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.provider.MediaStore
 import kotlinx.coroutines.*
@@ -17,119 +19,213 @@ class MediaObserver(
     private var debounceJob: Job? = null
     private var lastProcessedId: Long = -1L
 
-    private val projection = arrayOf(
-        MediaStore.Images.Media._ID,
-        MediaStore.Images.Media.DATA,
-        MediaStore.Images.Media.DISPLAY_NAME,
-        MediaStore.Images.Media.RELATIVE_PATH,
-        MediaStore.Images.Media.DATE_ADDED,
-        MediaStore.Images.Media.DATE_TAKEN
-    )
-
     override fun onChange(selfChange: Boolean, uri: Uri?) {
         super.onChange(selfChange, uri)
         DiagnosticLog.add(context, "ContentObserver.onChange selfChange=$selfChange uri=$uri")
 
         debounceJob?.cancel()
         debounceJob = scope.launch {
-            delay(500L)
+            delay(300L)
 
-            if (uri != null) {
-                DiagnosticLog.add(context, "Inspecting exact callback URI: $uri")
-                val handled = inspectExactUri(uri)
-                if (handled) return@launch
-
-                DiagnosticLog.add(
-                    context,
-                    "Exact callback URI did not produce a usable screenshot; falling back to broad MediaStore scan"
-                )
-            } else {
-                DiagnosticLog.add(context, "Observer callback URI was null; using broad MediaStore scan")
+            if (uri == null) {
+                DiagnosticLog.add(context, "Observer URI is null; using broad MediaStore scan")
+                scanLatestAcrossVolumes("null observer URI")
+                return@launch
             }
 
-            scanLatestImage("observer fallback")
+            probeExactUriWithRetries(uri)
         }
     }
 
     fun scanNow() {
         scope.launch {
             DiagnosticLog.add(context, "Manual MediaStore scan started")
-            scanLatestImage("manual scan")
+            scanLatestAcrossVolumes("manual scan")
         }
     }
 
+    private suspend fun probeExactUriWithRetries(uri: Uri) {
+        val waits = longArrayOf(0L, 1000L, 1500L, 2500L, 5000L)
+
+        for (attempt in waits.indices) {
+            val waitMs = waits[attempt]
+            if (waitMs > 0) delay(waitMs)
+
+            DiagnosticLog.add(
+                context,
+                "Exact URI probe attempt=${attempt + 1}/${waits.size} uri=$uri"
+            )
+
+            if (inspectExactUri(uri)) {
+                return
+            }
+        }
+
+        DiagnosticLog.add(
+            context,
+            "Exact URI still inaccessible/not classified after retries; running broad fallback"
+        )
+        scanLatestAcrossVolumes("observer fallback after retries")
+    }
+
     private fun inspectExactUri(uri: Uri): Boolean {
-        return try {
-            context.contentResolver.query(
+        val resolver = context.contentResolver
+
+        val mime = runCatching { resolver.getType(uri) }
+            .onFailure {
+                DiagnosticLog.add(
+                    context,
+                    "getType FAILED: ${it.javaClass.simpleName}: ${it.message}"
+                )
+            }
+            .getOrNull()
+
+        DiagnosticLog.add(context, "Exact URI MIME type: $mime")
+
+        val minimalCount = try {
+            resolver.query(
                 uri,
-                projection,
+                arrayOf(MediaStore.Images.Media._ID),
                 null,
                 null,
                 null
             )?.use { cursor ->
-                DiagnosticLog.add(context, "Exact URI query returned ${cursor.count} row(s)")
-
-                if (!cursor.moveToFirst()) {
-                    DiagnosticLog.add(context, "Exact URI exists as callback but query returned no accessible row")
-                    return false
-                }
-
-                inspectCurrentRow(cursor, uri, "exact callback URI")
+                DiagnosticLog.add(context, "Minimal exact query returned ${cursor.count} row(s)")
+                cursor.count
             } ?: run {
-                DiagnosticLog.add(context, "Exact URI query returned null cursor")
+                DiagnosticLog.add(context, "Minimal exact query returned null cursor")
+                0
+            }
+        } catch (t: Throwable) {
+            DiagnosticLog.add(
+                context,
+                "Minimal exact query FAILED: ${t.javaClass.simpleName}: ${t.message}"
+            )
+            0
+        }
+
+        val streamReadable = try {
+            resolver.openInputStream(uri)?.use { stream ->
+                stream.read()
+                true
+            } ?: false
+        } catch (t: Throwable) {
+            DiagnosticLog.add(
+                context,
+                "openInputStream FAILED: ${t.javaClass.simpleName}: ${t.message}"
+            )
+            false
+        }
+
+        DiagnosticLog.add(context, "Exact URI streamReadable=$streamReadable")
+
+        if (minimalCount <= 0) {
+            return false
+        }
+
+        return queryAndClassify(uri, "exact callback URI")
+    }
+
+    private fun metadataProjection(): Array<String> {
+        val columns = mutableListOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.RELATIVE_PATH,
+            MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.Images.Media.DATE_TAKEN
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            columns.add(MediaStore.MediaColumns.IS_PENDING)
+        }
+
+        return columns.toTypedArray()
+    }
+
+    private fun queryAndClassify(uri: Uri, source: String): Boolean {
+        return try {
+            context.contentResolver.query(
+                uri,
+                metadataProjection(),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                DiagnosticLog.add(
+                    context,
+                    "Metadata query source=$source returned ${cursor.count} row(s)"
+                )
+
+                if (!cursor.moveToFirst()) return false
+                inspectCurrentRow(cursor, uri, source)
+            } ?: run {
+                DiagnosticLog.add(context, "Metadata query source=$source returned null cursor")
                 false
             }
         } catch (t: Throwable) {
             DiagnosticLog.add(
                 context,
-                "Exact URI query FAILED: ${t.javaClass.simpleName}: ${t.message}"
+                "Metadata query source=$source FAILED: ${t.javaClass.simpleName}: ${t.message}"
             )
             false
         }
     }
 
-    private fun scanLatestImage(reason: String): Boolean {
+    private fun scanLatestAcrossVolumes(reason: String): Boolean {
         DiagnosticLog.add(context, "Broad MediaStore scan started: $reason")
 
-        return try {
-            context.contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                null,
-                null,
-                "${MediaStore.Images.Media.DATE_ADDED} DESC"
-            )?.use { cursor ->
-                DiagnosticLog.add(context, "Broad MediaStore query returned ${cursor.count} row(s)")
+        val uris = linkedSetOf<Uri>()
+        uris.add(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
 
-                if (!cursor.moveToFirst()) {
-                    DiagnosticLog.add(context, "No accessible image rows found")
-                    return false
-                }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val names = runCatching { MediaStore.getExternalVolumeNames(context) }
+                .getOrElse { emptySet() }
 
-                val id = cursor.getLong(
-                    cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-                )
-                val imageUri = Uri.withAppendedPath(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id.toString()
-                )
+            DiagnosticLog.add(context, "External volume names: $names")
 
-                inspectCurrentRow(cursor, imageUri, reason)
-            } ?: run {
-                DiagnosticLog.add(context, "Broad MediaStore query returned null cursor")
-                false
+            for (name in names) {
+                uris.add(MediaStore.Images.Media.getContentUri(name))
             }
-        } catch (t: Throwable) {
-            DiagnosticLog.add(
-                context,
-                "Broad MediaStore scan FAILED: ${t.javaClass.simpleName}: ${t.message}"
-            )
-            false
         }
+
+        for (uri in uris) {
+            try {
+                context.contentResolver.query(
+                    uri,
+                    metadataProjection(),
+                    null,
+                    null,
+                    "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                )?.use { cursor ->
+                    DiagnosticLog.add(
+                        context,
+                        "Broad query uri=$uri returned ${cursor.count} row(s)"
+                    )
+
+                    if (cursor.moveToFirst()) {
+                        val id = cursor.getLong(
+                            cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                        )
+                        val itemUri = Uri.withAppendedPath(uri, id.toString())
+                        if (inspectCurrentRow(cursor, itemUri, "broad scan $uri")) {
+                            return true
+                        }
+                    }
+                } ?: DiagnosticLog.add(context, "Broad query uri=$uri returned null cursor")
+            } catch (t: Throwable) {
+                DiagnosticLog.add(
+                    context,
+                    "Broad query uri=$uri FAILED: ${t.javaClass.simpleName}: ${t.message}"
+                )
+            }
+        }
+
+        DiagnosticLog.add(context, "No accessible/classified screenshot row found in broad scan")
+        return false
     }
 
     private fun inspectCurrentRow(
-        cursor: android.database.Cursor,
+        cursor: Cursor,
         imageUri: Uri,
         source: String
     ): Boolean {
@@ -137,43 +233,23 @@ class MediaObserver(
             cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         )
 
-        val data = runCatching {
-            cursor.getString(
-                cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
-            )
-        }.getOrDefault("")
-
-        val displayName = runCatching {
-            cursor.getString(
-                cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            )
-        }.getOrDefault("")
-
-        val relativePath = runCatching {
-            cursor.getString(
-                cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
-            )
-        }.getOrDefault("")
-
-        val dateAdded = runCatching {
-            cursor.getLong(
-                cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            )
-        }.getOrDefault(0L)
-
-        val dateTaken = runCatching {
-            cursor.getLong(
-                cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
-            )
-        }.getOrDefault(0L)
+        val displayName = cursor.stringOrEmpty(MediaStore.Images.Media.DISPLAY_NAME)
+        val relativePath = cursor.stringOrEmpty(MediaStore.Images.Media.RELATIVE_PATH)
+        val dateAdded = cursor.longOrZero(MediaStore.Images.Media.DATE_ADDED)
+        val dateTaken = cursor.longOrZero(MediaStore.Images.Media.DATE_TAKEN)
+        val isPending = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            cursor.longOrZero(MediaStore.MediaColumns.IS_PENDING)
+        } else {
+            -1L
+        }
 
         DiagnosticLog.add(
             context,
             "Image metadata source=$source id=$id name=$displayName path=$relativePath " +
-                "dateAdded=$dateAdded dateTaken=$dateTaken uri=$imageUri data=$data"
+                "dateAdded=$dateAdded dateTaken=$dateTaken isPending=$isPending uri=$imageUri"
         )
 
-        val isScreenshot = listOf(data, displayName, relativePath).any { field ->
+        val isScreenshot = listOf(displayName, relativePath).any { field ->
             field.contains("screenshot", ignoreCase = true) ||
                 field.contains("screen_shot", ignoreCase = true) ||
                 field.contains("screencap", ignoreCase = true)
@@ -202,6 +278,16 @@ class MediaObserver(
         }
 
         return true
+    }
+
+    private fun Cursor.stringOrEmpty(column: String): String {
+        val index = getColumnIndex(column)
+        return if (index >= 0 && !isNull(index)) getString(index).orEmpty() else ""
+    }
+
+    private fun Cursor.longOrZero(column: String): Long {
+        val index = getColumnIndex(column)
+        return if (index >= 0 && !isNull(index)) getLong(index) else 0L
     }
 
     fun destroy() {
