@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#6200EE</color>
-    <color name="colorPrimaryDark">#3700B3</color>
-    <color name="colorAccent">#03DAC5</color>
+    <color name="colorPrimary">#5BE39B</color>
+    <color name="colorPrimaryDark">#0B0F14</color>
+    <color name="colorAccent">#5BE39B</color>
+
+    <color name="scorg_bg">#0B0F14</color>
+    <color name="scorg_surface">#121821</color>
+    <color name="scorg_surface_alt">#18212C</color>
+    <color name="scorg_border">#25303D</color>
+    <color name="scorg_text">#F4F7FA</color>
+    <color name="scorg_muted">#98A5B3</color>
+    <color name="scorg_accent">#5BE39B</color>
+    <color name="scorg_accent_dark">#173D2A</color>
+    <color name="scorg_warning">#F4C95D</color>
+    <color name="scorg_danger">#FF6B78</color>
 </resources>
