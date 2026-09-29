@@ -13,6 +13,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.LinearInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -23,6 +24,7 @@ object PopupOverlayUI {
     private val dismissHandler = Handler(Looper.getMainLooper())
     private val autoDismiss = Runnable { dismiss() }
 
+    @Suppress("DEPRECATION")
     fun show(context: Context, screenshotUri: Uri) {
         dismiss()
         currentScreenshotUri = screenshotUri
@@ -30,6 +32,10 @@ object PopupOverlayUI {
         val windowManager =
             context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val folders = FolderManager.getFolders(context)
+
+        // Blur-behind needs Android 12+ and a device that allows it (some skins turn it off).
+        val blurOn = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            windowManager.isCrossWindowBlurEnabled
 
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -42,8 +48,8 @@ object PopupOverlayUI {
             background = roundedWithStroke(
                 context,
                 22,
-                Color.parseColor("#FAFFFFFF"),
-                Color.parseColor("#E7E5EF")
+                if (blurOn) GLASS_BLURRED else GLASS_SOLID,
+                GLASS_EDGE
             )
             elevation = dp(context, 10).toFloat()
         }
@@ -100,7 +106,7 @@ object PopupOverlayUI {
             )
         } else {
             folders.forEachIndexed { index, folder ->
-                container.addView(folderRow(context, folder))
+                container.addView(folderRow(context, folder, ACCENTS[index % ACCENTS.size]))
                 if (index != folders.lastIndex) {
                     container.addView(spacer(context, 8))
                 }
@@ -112,7 +118,7 @@ object PopupOverlayUI {
         container.addView(
             TextView(context).apply {
                 text = "＋  New folder"
-                setTextColor(TEXT)
+                setTextColor(DARK)
                 textSize = 13f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 gravity = Gravity.CENTER
@@ -120,8 +126,8 @@ object PopupOverlayUI {
                 background = roundedWithStroke(
                     context,
                     14,
-                    LILAC,
-                    Color.parseColor("#D8CCFA")
+                    LAVENDER,
+                    LAVENDER
                 )
                 setOnClickListener {
                     val intent = Intent(
@@ -153,6 +159,16 @@ object PopupOverlayUI {
             }
         )
 
+        val bar = View(context).apply {
+            background = rounded(context, 2, LAVENDER)
+            pivotX = 0f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(context, 3)
+            ).apply { topMargin = dp(context, 10) }
+        }
+        container.addView(bar)
+
         val screenWidth = context.resources.displayMetrics.widthPixels
         val desiredWidth = dp(context, 380)
         val availableWidth =
@@ -174,11 +190,20 @@ object PopupOverlayUI {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             y = dp(context, 56)
             width = minOf(desiredWidth, availableWidth)
+            if (blurOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                blurBehindRadius = dp(context, 28)
+            }
         }
 
         try {
             windowManager.addView(container, params)
             overlayView = container
+            bar.animate()
+                .scaleX(0f)
+                .setDuration(15_000L)
+                .setInterpolator(LinearInterpolator())
+                .start()
             dismissHandler.postDelayed(autoDismiss, 15_000L)
         } catch (e: SecurityException) {
             DiagnosticLog.add(context, "Popup permission error: " + e.message)
@@ -200,7 +225,7 @@ object PopupOverlayUI {
         }
     }
 
-    private fun folderRow(context: Context, folder: String): LinearLayout {
+    private fun folderRow(context: Context, folder: String, accent: Int): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -211,7 +236,7 @@ object PopupOverlayUI {
                 dp(context, 12),
                 dp(context, 8)
             )
-            background = rounded(context, 14, SURFACE_ALT)
+            background = roundedWithStroke(context, 14, SURFACE_ALT, GLASS_EDGE)
             setOnClickListener {
                 FileMover.moveToFolder(
                     context,
@@ -224,11 +249,11 @@ object PopupOverlayUI {
             addView(
                 TextView(context).apply {
                     text = folder.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "•"
-                    setTextColor(TEXT)
+                    setTextColor(DARK)
                     textSize = 12f
                     typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                     gravity = Gravity.CENTER
-                    background = rounded(context, 11, BLUE)
+                    background = rounded(context, 11, accent)
                     layoutParams = LinearLayout.LayoutParams(
                         dp(context, 36),
                         dp(context, 36)
@@ -312,11 +337,21 @@ object PopupOverlayUI {
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
-    private val TEXT = Color.parseColor("#35384D")
-    private val MUTED = Color.parseColor("#85899C")
-    private val SURFACE_ALT = Color.parseColor("#F2F4FA")
-    private val LILAC = Color.parseColor("#E9E2FA")
+    private val TEXT = Color.parseColor("#EEEDFA")
+    private val MUTED = Color.parseColor("#A9A8C4")
+    private val DARK = Color.parseColor("#2A2540")
+    private val SURFACE_ALT = Color.parseColor("#1FFFFFFF")
+    private val LILAC = Color.parseColor("#33CBB8FF")
+    private val LAVENDER = Color.parseColor("#CBB8FF")
     private val BLUE = Color.parseColor("#B9D1FA")
+    private val TEAL = Color.parseColor("#9EDFD8")
+    private val PINK = Color.parseColor("#F6D6DE")
+    private val ACCENTS = listOf(BLUE, TEAL, PINK, LAVENDER)
+
+    // Night glass: translucent when the blur is on, more opaque when it is not.
+    private val GLASS_BLURRED = Color.parseColor("#A6221F45")
+    private val GLASS_SOLID = Color.parseColor("#EB1E1B3C")
+    private val GLASS_EDGE = Color.parseColor("#38FFFFFF")
 
     init {
         // no-op
