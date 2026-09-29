@@ -25,159 +25,164 @@ class NewFolderActivity : Activity() {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(20), dp(22), dp(18))
+            setPadding(dp(20), dp(20), dp(20), dp(18))
             background = roundedWithStroke(
                 22,
-                Color.parseColor("#141B23"),
-                Color.parseColor("#31404E")
+                Color.WHITE,
+                Color.parseColor("#E7E5EF")
             )
         }
 
         card.addView(
             TextView(this).apply {
                 text = "NEW SORTING FOLDER"
-                setTextColor(Color.parseColor("#5BE39B"))
-                textSize = 10.5f
-                letterSpacing = 0.11f
+                setTextColor(Color.parseColor("#7D70A8"))
+                textSize = 10f
+                letterSpacing = 0.10f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(8))
             }
         )
 
         card.addView(
             TextView(this).apply {
                 text = "Name your folder"
-                setTextColor(Color.parseColor("#F4F7FA"))
-                textSize = 20f
+                setTextColor(Color.parseColor("#35384D"))
+                textSize = 19f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                setPadding(0, dp(9), 0, 0)
+                gravity = Gravity.CENTER
             }
         )
 
         card.addView(
             TextView(this).apply {
                 text = if (screenshotUriStr != null) {
-                    "Scorg will create it and move this screenshot there."
+                    "It will be created and this screenshot will move there."
                 } else {
-                    "It will appear in your sorting popup from now on."
+                    "It will appear in the same place in your sorting popup."
                 }
-                setTextColor(Color.parseColor("#98A5B3"))
-                textSize = 12.5f
-                setPadding(0, dp(4), 0, dp(16))
+                setTextColor(Color.parseColor("#85899C"))
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(6), dp(8), dp(16))
             }
         )
 
         val editText = EditText(this).apply {
             hint = "e.g. Memes"
-            setHintTextColor(Color.parseColor("#647280"))
-            setTextColor(Color.parseColor("#F4F7FA"))
-            textSize = 15f
+            setHintTextColor(Color.parseColor("#AAAEC0"))
+            setTextColor(Color.parseColor("#35384D"))
+            textSize = 14f
+            gravity = Gravity.CENTER_VERTICAL
             setSingleLine(true)
-            setPadding(dp(14), dp(13), dp(14), dp(13))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
             background = roundedWithStroke(
-                13,
-                Color.parseColor("#1B242E"),
-                Color.parseColor("#33404D")
+                14,
+                Color.parseColor("#F8F7FC"),
+                Color.parseColor("#E7E5EF")
             )
         }
         card.addView(editText)
 
+        card.addView(space(16))
+
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(16), 0, 0)
+            gravity = Gravity.CENTER
         }
 
-        val cancel = TextView(this).apply {
-            text = "Cancel"
-            setTextColor(Color.parseColor("#98A5B3"))
-            textSize = 13f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-            setOnClickListener { finish() }
-        }
+        actions.addView(
+            TextView(this).apply {
+                text = "Cancel"
+                setTextColor(Color.parseColor("#85899C"))
+                textSize = 13f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                minimumHeight = dp(46)
+                background = roundedWithStroke(
+                    14,
+                    Color.parseColor("#F8F7FC"),
+                    Color.parseColor("#E7E5EF")
+                )
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+                setOnClickListener { finish() }
+            }
+        )
 
-        val create = TextView(this).apply {
-            text = if (screenshotUriStr != null) "Create & move" else "Create"
-            setTextColor(Color.parseColor("#0B0F14"))
-            textSize = 13f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            background = rounded(
-                13,
-                Color.parseColor("#5BE39B")
-            )
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1.15f
-            )
-            setOnClickListener {
-                val name = editText.text.toString().trim()
+        actions.addView(widthSpace(8))
 
-                when {
-                    name.isEmpty() -> {
-                        toast("Enter a folder name.")
-                        return@setOnClickListener
-                    }
-
-                    name.length > 40 -> {
-                        toast("Keep folder names under 40 characters.")
-                        return@setOnClickListener
-                    }
-
-                    name.contains("/") || name.contains("\\") -> {
-                        toast("Folder names can't contain / or \\.")
-                        return@setOnClickListener
-                    }
-                }
-
-                val added = FolderManager.addFolder(
-                    this@NewFolderActivity,
-                    name
+        actions.addView(
+            TextView(this).apply {
+                text = if (screenshotUriStr != null) "Create & move" else "Create"
+                setTextColor(Color.parseColor("#35384D"))
+                textSize = 13f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                minimumHeight = dp(46)
+                background = rounded(
+                    14,
+                    Color.parseColor("#CBB8FF")
+                )
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
                 )
 
-                if (!added && screenshotUriStr == null) {
-                    toast("That folder is already in Scorg.")
-                    return@setOnClickListener
-                }
+                setOnClickListener {
+                    val name = editText.text.toString().trim()
 
-                if (!added) {
-                    DiagnosticLog.add(
-                        this@NewFolderActivity,
-                        "New-folder request reused existing category=" + name
-                    )
-                }
+                    when {
+                        name.isEmpty() -> {
+                            toast("Enter a folder name.")
+                            return@setOnClickListener
+                        }
 
-                screenshotUriStr?.let { uriStr ->
-                    FileMover.moveToFolder(
+                        name.length > 40 -> {
+                            toast("Keep folder names under 40 characters.")
+                            return@setOnClickListener
+                        }
+
+                        name.contains("/") || name.contains("\\") -> {
+                            toast("Folder names can't contain / or \\.")
+                            return@setOnClickListener
+                        }
+                    }
+
+                    val added = FolderManager.addFolder(
                         this@NewFolderActivity,
-                        Uri.parse(uriStr),
                         name
                     )
+
+                    if (!added && screenshotUriStr == null) {
+                        toast("That folder is already in Scorg.")
+                        return@setOnClickListener
+                    }
+
+                    screenshotUriStr?.let { uriString ->
+                        FileMover.moveToFolder(
+                            this@NewFolderActivity,
+                            Uri.parse(uriString),
+                            name
+                        )
+                    }
+
+                    finish()
                 }
-
-                finish()
             }
-        }
+        )
 
-        actions.addView(cancel)
-        actions.addView(space(8))
-        actions.addView(create)
         card.addView(actions)
-
         setContentView(card)
 
-        val displayWidth = resources.displayMetrics.widthPixels
         val width = minOf(
-            displayWidth - dp(32),
-            dp(420)
+            resources.displayMetrics.widthPixels - dp(32),
+            dp(400)
         )
 
         window.setLayout(
@@ -192,7 +197,15 @@ class NewFolderActivity : Activity() {
         editText.requestFocus()
     }
 
-    private fun space(widthDp: Int): TextView =
+    private fun space(heightDp: Int): TextView =
+        TextView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(heightDp)
+            )
+        }
+
+    private fun widthSpace(widthDp: Int): TextView =
         TextView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 dp(widthDp),
@@ -200,10 +213,7 @@ class NewFolderActivity : Activity() {
             )
         }
 
-    private fun rounded(
-        radiusDp: Int,
-        color: Int
-    ): GradientDrawable =
+    private fun rounded(radiusDp: Int, color: Int): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(radiusDp).toFloat()

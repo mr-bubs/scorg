@@ -25,6 +25,7 @@ object PopupOverlayUI {
 
     fun show(context: Context, screenshotUri: Uri) {
         dismiss()
+        currentScreenshotUri = screenshotUri
 
         val windowManager =
             context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -33,39 +34,37 @@ object PopupOverlayUI {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
-                dp(context, 18),
-                dp(context, 17),
-                dp(context, 18),
+                dp(context, 16),
+                dp(context, 16),
+                dp(context, 16),
                 dp(context, 14)
             )
             background = roundedWithStroke(
                 context,
                 22,
-                Color.parseColor("#F5141B23"),
-                Color.parseColor("#374452")
+                Color.parseColor("#FAFFFFFF"),
+                Color.parseColor("#E7E5EF")
             )
-            elevation = dp(context, 16).toFloat()
+            elevation = dp(context, 10).toFloat()
         }
 
-        val readyPill = TextView(context).apply {
-            text = "SCREENSHOT READY"
-            setTextColor(ACCENT)
-            textSize = 10.5f
-            letterSpacing = 0.11f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(
-                dp(context, 10),
-                dp(context, 6),
-                dp(context, 10),
-                dp(context, 6)
-            )
-            background = rounded(
-                context,
-                20,
-                Color.parseColor("#173D2A")
-            )
-        }
-        container.addView(readyPill)
+        container.addView(
+            TextView(context).apply {
+                text = "SCREENSHOT READY"
+                setTextColor(TEXT)
+                textSize = 10f
+                letterSpacing = 0.10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(
+                    dp(context, 10),
+                    dp(context, 6),
+                    dp(context, 10),
+                    dp(context, 6)
+                )
+                background = rounded(context, 18, LILAC)
+            }
+        )
 
         container.addView(
             TextView(context).apply {
@@ -73,16 +72,18 @@ object PopupOverlayUI {
                 setTextColor(TEXT)
                 textSize = 18f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                setPadding(0, dp(context, 13), 0, 0)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(context, 14), 0, 0)
             }
         )
 
         container.addView(
             TextView(context).apply {
-                text = "Tap a folder and Scorg will move it instantly."
+                text = "One tap and it’s sorted."
                 setTextColor(MUTED)
                 textSize = 11.5f
-                setPadding(0, dp(context, 3), 0, dp(context, 13))
+                gravity = Gravity.CENTER
+                setPadding(0, dp(context, 4), 0, dp(context, 14))
             }
         )
 
@@ -91,62 +92,36 @@ object PopupOverlayUI {
                 TextView(context).apply {
                     text = "No sorting folders yet."
                     setTextColor(MUTED)
-                    textSize = 12.5f
+                    textSize = 12f
                     gravity = Gravity.CENTER
-                    setPadding(
-                        dp(context, 12),
-                        dp(context, 14),
-                        dp(context, 12),
-                        dp(context, 14)
-                    )
-                    background = rounded(
-                        context,
-                        14,
-                        Color.parseColor("#18212C")
-                    )
+                    minimumHeight = dp(context, 48)
+                    background = rounded(context, 14, SURFACE_ALT)
                 }
             )
         } else {
-            folders.forEachIndexed { index, folderName ->
-                container.addView(
-                    folderRow(context, folderName) {
-                        FileMover.moveToFolder(
-                            context,
-                            screenshotUri,
-                            folderName
-                        )
-                        dismiss()
-                    }
-                )
-
+            folders.forEachIndexed { index, folder ->
+                container.addView(folderRow(context, folder))
                 if (index != folders.lastIndex) {
-                    container.addView(
-                        spacer(context, 7)
-                    )
+                    container.addView(spacer(context, 8))
                 }
             }
         }
 
-        container.addView(spacer(context, 10))
+        container.addView(spacer(context, 12))
 
         container.addView(
             TextView(context).apply {
                 text = "＋  New folder"
-                setTextColor(ACCENT)
-                textSize = 13.5f
+                setTextColor(TEXT)
+                textSize = 13f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setPadding(
-                    dp(context, 14),
-                    dp(context, 13),
-                    dp(context, 14),
-                    dp(context, 13)
-                )
+                minimumHeight = dp(context, 48)
                 background = roundedWithStroke(
                     context,
                     14,
-                    Color.TRANSPARENT,
-                    Color.parseColor("#355D48")
+                    LILAC,
+                    Color.parseColor("#D8CCFA")
                 )
                 setOnClickListener {
                     val intent = Intent(
@@ -154,10 +129,7 @@ object PopupOverlayUI {
                         NewFolderActivity::class.java
                     ).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        putExtra(
-                            "screenshot_uri",
-                            screenshotUri.toString()
-                        )
+                        putExtra("screenshot_uri", screenshotUri.toString())
                     }
                     context.startActivity(intent)
                     dismiss()
@@ -168,7 +140,7 @@ object PopupOverlayUI {
         container.addView(
             TextView(context).apply {
                 text = "Dismiss"
-                setTextColor(Color.parseColor("#748290"))
+                setTextColor(MUTED)
                 textSize = 11.5f
                 gravity = Gravity.CENTER
                 setPadding(
@@ -182,10 +154,9 @@ object PopupOverlayUI {
         )
 
         val screenWidth = context.resources.displayMetrics.widthPixels
-        val desiredWidth = dp(context, 390)
+        val desiredWidth = dp(context, 380)
         val availableWidth =
-            (screenWidth - dp(context, 24))
-                .coerceAtLeast(dp(context, 280))
+            (screenWidth - dp(context, 24)).coerceAtLeast(dp(context, 280))
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -200,9 +171,8 @@ object PopupOverlayUI {
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
-            x = dp(context, 12)
-            y = dp(context, 64)
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = dp(context, 56)
             width = minOf(desiredWidth, availableWidth)
         }
 
@@ -211,10 +181,7 @@ object PopupOverlayUI {
             overlayView = container
             dismissHandler.postDelayed(autoDismiss, 15_000L)
         } catch (e: SecurityException) {
-            DiagnosticLog.add(
-                context,
-                "Popup permission error: " + e.message
-            )
+            DiagnosticLog.add(context, "Popup permission error: " + e.message)
             Toast.makeText(
                 context,
                 "Scorg needs permission to display the sorting popup.",
@@ -223,8 +190,7 @@ object PopupOverlayUI {
         } catch (e: Exception) {
             DiagnosticLog.add(
                 context,
-                "Popup error: " +
-                    e.javaClass.simpleName + ": " + e.message
+                "Popup error: " + e.javaClass.simpleName + ": " + e.message
             )
             Toast.makeText(
                 context,
@@ -234,114 +200,92 @@ object PopupOverlayUI {
         }
     }
 
-    fun dismiss() {
-        dismissHandler.removeCallbacks(autoDismiss)
-
-        overlayView?.let { view ->
-            try {
-                val windowManager =
-                    view.context.getSystemService(
-                        Context.WINDOW_SERVICE
-                    ) as WindowManager
-                windowManager.removeView(view)
-            } catch (_: Exception) {
-            }
-            overlayView = null
-        }
-    }
-
-    private fun folderRow(
-        context: Context,
-        folderName: String,
-        onClick: () -> Unit
-    ): LinearLayout {
-        val row = LinearLayout(context).apply {
+    private fun folderRow(context: Context, folder: String): LinearLayout {
+        return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(context, 52)
             setPadding(
-                dp(context, 11),
-                dp(context, 10),
-                dp(context, 11),
-                dp(context, 10)
+                dp(context, 12),
+                dp(context, 8),
+                dp(context, 12),
+                dp(context, 8)
             )
-            background = rounded(
-                context,
-                14,
-                Color.parseColor("#1B242E")
-            )
-            setOnClickListener { onClick() }
-        }
-
-        val firstLetter =
-            folderName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "•"
-
-        row.addView(
-            TextView(context).apply {
-                text = firstLetter
-                setTextColor(Color.parseColor("#0B0F14"))
-                textSize = 13f
-                typeface = Typeface.create(
-                    Typeface.DEFAULT,
-                    Typeface.BOLD
-                )
-                gravity = Gravity.CENTER
-                background = rounded(
+            background = rounded(context, 14, SURFACE_ALT)
+            setOnClickListener {
+                FileMover.moveToFolder(
                     context,
-                    10,
-                    ACCENT
+                    currentScreenshotUri ?: return@setOnClickListener,
+                    folder
                 )
-                layoutParams = LinearLayout.LayoutParams(
-                    dp(context, 34),
-                    dp(context, 34)
-                )
+                dismiss()
             }
-        )
 
-        row.addView(
-            TextView(context).apply {
-                text = folderName
-                setTextColor(TEXT)
-                textSize = 13.5f
-                typeface = Typeface.create(
-                    Typeface.DEFAULT,
-                    Typeface.BOLD
-                )
-                setPadding(
-                    dp(context, 11),
-                    0,
-                    dp(context, 8),
-                    0
-                )
-                layoutParams = LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f
-                )
-            }
-        )
+            addView(
+                TextView(context).apply {
+                    text = folder.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "•"
+                    setTextColor(TEXT)
+                    textSize = 12f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    gravity = Gravity.CENTER
+                    background = rounded(context, 11, BLUE)
+                    layoutParams = LinearLayout.LayoutParams(
+                        dp(context, 36),
+                        dp(context, 36)
+                    )
+                }
+            )
 
-        row.addView(
-            TextView(context).apply {
-                text = "›"
-                setTextColor(Color.parseColor("#687684"))
-                textSize = 22f
-                gravity = Gravity.CENTER
-            }
-        )
+            addView(
+                TextView(context).apply {
+                    text = folder
+                    setTextColor(TEXT)
+                    textSize = 13.5f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    setPadding(dp(context, 12), 0, 0, 0)
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
+                }
+            )
 
-        return row
+            addView(
+                TextView(context).apply {
+                    text = "›"
+                    setTextColor(MUTED)
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                }
+            )
+        }
     }
 
-    private fun spacer(
-        context: Context,
-        heightDp: Int
-    ): View =
+    private var currentScreenshotUri: Uri? = null
+
+    private fun spacer(context: Context, heightDp: Int): View =
         View(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(context, heightDp)
             )
         }
+
+    fun dismiss() {
+        dismissHandler.removeCallbacks(autoDismiss)
+        currentScreenshotUri = null
+
+        overlayView?.let { view ->
+            try {
+                val windowManager =
+                    view.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                windowManager.removeView(view)
+            } catch (_: Exception) {
+            }
+            overlayView = null
+        }
+    }
 
     private fun rounded(
         context: Context,
@@ -368,7 +312,13 @@ object PopupOverlayUI {
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
-    private val TEXT = Color.parseColor("#F4F7FA")
-    private val MUTED = Color.parseColor("#98A5B3")
-    private val ACCENT = Color.parseColor("#5BE39B")
+    private val TEXT = Color.parseColor("#35384D")
+    private val MUTED = Color.parseColor("#85899C")
+    private val SURFACE_ALT = Color.parseColor("#F2F4FA")
+    private val LILAC = Color.parseColor("#E9E2FA")
+    private val BLUE = Color.parseColor("#B9D1FA")
+
+    init {
+        // no-op
+    }
 }

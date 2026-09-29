@@ -1,23 +1,23 @@
 <resources>
 
-    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/scorg_accent</item>
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/scorg_lavender</item>
         <item name="colorPrimaryDark">@color/scorg_bg</item>
-        <item name="colorAccent">@color/scorg_accent</item>
+        <item name="colorAccent">@color/scorg_teal</item>
         <item name="android:windowBackground">@color/scorg_bg</item>
         <item name="android:statusBarColor">@color/scorg_bg</item>
         <item name="android:navigationBarColor">@color/scorg_bg</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:fontFamily">sans</item>
     </style>
 
-    <style name="ScorgDialogTheme" parent="Theme.AppCompat.Dialog">
-        <item name="colorPrimary">@color/scorg_accent</item>
-        <item name="colorAccent">@color/scorg_accent</item>
+    <style name="ScorgDialogTheme" parent="Theme.AppCompat.Light.Dialog">
+        <item name="colorPrimary">@color/scorg_lavender</item>
+        <item name="colorAccent">@color/scorg_teal</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:colorAccent">@color/scorg_accent</item>
+        <item name="android:colorAccent">@color/scorg_lavender</item>
         <item name="android:fontFamily">sans</item>
     </style>
 
