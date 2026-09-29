@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.HorizontalScrollView
@@ -232,7 +233,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(TEXT)
             textSize = 21f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(0, dp(16), 0, 0)
+            setPadding(0, dp(12), 0, 0)
         }
         card.addView(readinessTitle)
 
@@ -240,7 +241,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(FOLDER_BODY)
             textSize = 13.5f
             setLineSpacing(0f, 1.15f)
-            setPadding(0, dp(6), 0, dp(16))
+            setPadding(0, dp(4), 0, dp(12))
         }
         card.addView(readinessBody)
 
@@ -668,6 +669,9 @@ class MainActivity : AppCompatActivity() {
                     text = folder
                     setTextColor(TEXT)
                     textSize = 13.5f
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    maxWidth = dp(148)
                     typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                     gravity = Gravity.CENTER
                     minimumHeight = dp(44)
@@ -847,7 +851,7 @@ class MainActivity : AppCompatActivity() {
     private fun folderCard(): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(16), dp(18), dp(18))
+            setPadding(dp(16), dp(14), dp(16), dp(16))
             val big = dp(20).toFloat()
             val small = dp(4).toFloat()
             background = GradientDrawable().apply {
@@ -859,7 +863,7 @@ class MainActivity : AppCompatActivity() {
     private fun folderTab(): View =
         View(this).apply {
             background = tabShape(LAVENDER)
-            layoutParams = LinearLayout.LayoutParams(dp(112), dp(16))
+            layoutParams = LinearLayout.LayoutParams(dp(112), dp(14))
         }
 
     private fun indexCard(padding: Int = dp(8)): LinearLayout =
