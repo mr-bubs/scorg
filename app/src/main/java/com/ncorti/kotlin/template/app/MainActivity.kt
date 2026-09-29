@@ -6,12 +6,14 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -216,7 +218,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildReadinessCard(): View {
-        val card = card()
+        val card = folderCard()
 
         readinessPill = TextView(this).apply {
             textSize = 11f
@@ -235,21 +237,25 @@ class MainActivity : AppCompatActivity() {
         card.addView(readinessTitle)
 
         readinessBody = TextView(this).apply {
-            setTextColor(MUTED)
+            setTextColor(FOLDER_BODY)
             textSize = 13.5f
             setLineSpacing(0f, 1.15f)
             setPadding(0, dp(6), 0, dp(16))
         }
         card.addView(readinessBody)
 
-        primaryButton = button("Finish setup", LAVENDER, TEXT) { checkAndStart() }
+        primaryButton = button("Finish setup", TEXT, Color.WHITE) { checkAndStart() }
         card.addView(primaryButton)
 
-        return card
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(folderTab())
+            addView(card)
+        }
     }
 
     private fun buildSetupCard(): View {
-        val card = card(dp(8))
+        val card = indexCard(dp(8))
 
         card.addView(
             setupRow(
@@ -340,23 +346,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildCategoriesCard(): View {
-        val card = card(dp(12))
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        card.addView(
+        wrap.addView(
             TextView(this).apply {
-                text = "These appear in the same order in your sorting popup."
+                text = "Same order as your sorting popup. Hold a tab to remove it."
                 setTextColor(MUTED)
                 textSize = 12f
-                gravity = Gravity.CENTER
-                setPadding(dp(4), dp(2), dp(4), dp(12))
+                setPadding(dp(2), 0, dp(2), dp(10))
             }
         )
 
         categoriesContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+            setPadding(dp(6), 0, dp(6), 0)
         }
-        card.addView(categoriesContainer)
-        return card
+
+        wrap.addView(
+            HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                addView(categoriesContainer)
+            }
+        )
+
+        wrap.addView(
+            View(this).apply {
+                setBackgroundColor(LAVENDER)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(3)
+                )
+            }
+        )
+        return wrap
     }
 
     private fun buildHowItWorksCard(): View {
@@ -597,8 +621,8 @@ class MainActivity : AppCompatActivity() {
                 readinessTitle.text = "Ready to sort"
                 readinessBody.text = "Everything is aligned and connected. Start Scorg and keep screenshots exactly where they belong."
                 primaryButton.text = "Start watching"
-                primaryButton.background = rounded(14, LAVENDER)
-                primaryButton.setTextColor(TEXT)
+                primaryButton.background = rounded(14, TEXT)
+                primaryButton.setTextColor(Color.WHITE)
             }
 
             else -> {
@@ -609,8 +633,8 @@ class MainActivity : AppCompatActivity() {
                 readinessTitle.text = "A few things first"
                 readinessBody.text = "Complete the remaining setup steps below. Each one has a single clear purpose."
                 primaryButton.text = "Finish setup"
-                primaryButton.background = rounded(14, LAVENDER)
-                primaryButton.setTextColor(TEXT)
+                primaryButton.background = rounded(14, TEXT)
+                primaryButton.setTextColor(Color.WHITE)
             }
         }
 
@@ -636,58 +660,29 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val accents = listOf(LILAC, TEAL, BLUE, TURQUOISE)
+        val accents = listOf(BLUE, TEAL, LILAC_DEEP, TURQUOISE)
 
         folders.forEachIndexed { index, folder ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = dp(56)
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                background = rounded(14, SURFACE_ALT)
-                setOnLongClickListener {
-                    confirmRemoveFolder(folder)
-                    true
-                }
-            }
-
-            row.addView(
-                TextView(this).apply {
-                    text = folder.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "•"
-                    setTextColor(TEXT)
-                    textSize = 12f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    gravity = Gravity.CENTER
-                    background = rounded(11, accents[index % accents.size])
-                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
-                }
-            )
-
-            row.addView(
+            categoriesContainer.addView(
                 TextView(this).apply {
                     text = folder
                     setTextColor(TEXT)
                     textSize = 13.5f
                     typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    setPadding(dp(12), 0, 0, 0)
+                    gravity = Gravity.CENTER
+                    minimumHeight = dp(44)
+                    setPadding(dp(16), dp(10), dp(16), dp(10 + if (index % 2 == 1) 4 else 0))
+                    background = tabShape(accents[index % accents.size])
+                    setOnLongClickListener {
+                        confirmRemoveFolder(folder)
+                        true
+                    }
                     layoutParams = LinearLayout.LayoutParams(
-                        0,
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { marginEnd = dp(6) }
                 }
             )
-
-            row.addView(
-                TextView(this).apply {
-                    text = "hold to remove"
-                    setTextColor(MUTED)
-                    textSize = 10.5f
-                }
-            )
-
-            categoriesContainer.addView(row)
-            if (index != folders.lastIndex) categoriesContainer.addView(space(8))
         }
     }
 
@@ -849,6 +844,52 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(1).toFloat()
         }
 
+    private fun folderCard(): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(18))
+            val big = dp(20).toFloat()
+            val small = dp(4).toFloat()
+            background = GradientDrawable().apply {
+                setColor(LAVENDER)
+                cornerRadii = floatArrayOf(small, small, big, big, big, big, big, big)
+            }
+        }
+
+    private fun folderTab(): View =
+        View(this).apply {
+            background = tabShape(LAVENDER)
+            layoutParams = LinearLayout.LayoutParams(dp(112), dp(16))
+        }
+
+    private fun indexCard(padding: Int = dp(8)): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding + dp(6), padding, padding, padding)
+            val r = dp(14).toFloat()
+            val edge = GradientDrawable().apply {
+                setColor(TURQUOISE)
+                cornerRadius = r
+            }
+            val paper = GradientDrawable().apply {
+                setColor(SURFACE)
+                cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
+                setStroke(dp(1), BORDER)
+            }
+            background = LayerDrawable(arrayOf(edge, paper)).apply {
+                setLayerInset(1, dp(6), 0, 0, 0)
+            }
+            elevation = dp(1).toFloat()
+        }
+
+    private fun tabShape(color: Int): GradientDrawable {
+        val r = dp(12).toFloat()
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+        }
+    }
+
     private fun sectionLabel(text: String): TextView =
         TextView(this).apply {
             this.text = text
@@ -922,7 +963,7 @@ class MainActivity : AppCompatActivity() {
         (value * resources.displayMetrics.density).toInt()
 
     companion object {
-        private val BG = Color.parseColor("#F8F7FC")
+        private val BG = Color.parseColor("#F1EEF9")
         private val SURFACE = Color.parseColor("#FFFFFF")
         private val SURFACE_ALT = Color.parseColor("#F2F4FA")
         private val BORDER = Color.parseColor("#E7E5EF")
@@ -937,5 +978,6 @@ class MainActivity : AppCompatActivity() {
         private val BLUE = Color.parseColor("#B9D1FA")
         private val SUCCESS = Color.parseColor("#DDF3ED")
         private val WARNING = Color.parseColor("#F8EFD1")
+        private val FOLDER_BODY = Color.parseColor("#4A4D66")
     }
 }
