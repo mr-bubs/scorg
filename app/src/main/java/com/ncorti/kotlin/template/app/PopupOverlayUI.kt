@@ -10,17 +10,22 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 
 object PopupOverlayUI {
 
     private var overlayView: View? = null
+    private var progressBar: View? = null
+    private var currentScreenshotUri: Uri? = null
+
     private val dismissHandler = Handler(Looper.getMainLooper())
     private val autoDismiss = Runnable { dismiss() }
 
@@ -33,9 +38,10 @@ object PopupOverlayUI {
             context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val folders = FolderManager.getFolders(context)
 
-        // Blur-behind needs Android 12+ and a device that allows it (some skins turn it off).
-        val blurOn = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            windowManager.isCrossWindowBlurEnabled
+        val blurOn = runCatching {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                windowManager.isCrossWindowBlurEnabled
+        }.getOrDefault(false)
 
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -105,12 +111,52 @@ object PopupOverlayUI {
                 }
             )
         } else {
+            val folderList = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
             folders.forEachIndexed { index, folder ->
-                container.addView(folderRow(context, folder, ACCENTS[index % ACCENTS.size]))
+                folderList.addView(
+                    folderRow(
+                        context,
+                        folder,
+                        ACCENTS[index % ACCENTS.size]
+                    )
+                )
+
                 if (index != folders.lastIndex) {
-                    container.addView(spacer(context, 8))
+                    folderList.addView(spacer(context, 8))
                 }
             }
+
+            val rowHeight = dp(context, 52)
+            val rowGap = dp(context, 8)
+            val maxVisibleRows = when {
+                context.resources.configuration.screenWidthDp >= 600 -> 6
+                context.resources.configuration.orientation ==
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE -> 4
+                else -> 5
+            }
+
+            val visibleRows = minOf(folders.size, maxVisibleRows)
+            val targetHeight =
+                (visibleRows * rowHeight) +
+                    ((visibleRows - 1).coerceAtLeast(0) * rowGap)
+
+            val folderScroll = ScrollView(context).apply {
+                isVerticalScrollBarEnabled = folders.size > maxVisibleRows
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                isFillViewport = false
+                clipToPadding = false
+                addView(folderList)
+
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    targetHeight
+                )
+            }
+
+            container.addView(folderScroll)
         }
 
         container.addView(spacer(context, 12))
@@ -162,15 +208,29 @@ object PopupOverlayUI {
         val bar = View(context).apply {
             background = rounded(context, 2, LAVENDER)
             pivotX = 0f
+            scaleX = 1f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(context, 3)
-            ).apply { topMargin = dp(context, 10) }
+            ).apply {
+                topMargin = dp(context, 10)
+            }
         }
+        progressBar = bar
         container.addView(bar)
 
-        val screenWidth = context.resources.displayMetrics.widthPixels
-        val desiredWidth = dp(context, 380)
+        val metrics = context.resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+        val shortSide = minOf(screenWidth, screenHeight)
+        val longSide = maxOf(screenWidth, screenHeight)
+
+        val desiredWidth = when {
+            context.resources.configuration.screenWidthDp >= 600 -> dp(context, 420)
+            longSide > shortSide * 1.35f -> dp(context, 400)
+            else -> dp(context, 380)
+        }
+
         val availableWidth =
             (screenWidth - dp(context, 24)).coerceAtLeast(dp(context, 280))
 
@@ -188,8 +248,9 @@ object PopupOverlayUI {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            y = dp(context, 56)
+            y = dp(context, 48)
             width = minOf(desiredWidth, availableWidth)
+
             if (blurOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
                 blurBehindRadius = dp(context, 28)
@@ -199,11 +260,16 @@ object PopupOverlayUI {
         try {
             windowManager.addView(container, params)
             overlayView = container
+
+            bar.animate().cancel()
+            bar.scaleX = 1f
             bar.animate()
                 .scaleX(0f)
                 .setDuration(15_000L)
                 .setInterpolator(LinearInterpolator())
                 .start()
+
+            dismissHandler.removeCallbacks(autoDismiss)
             dismissHandler.postDelayed(autoDismiss, 15_000L)
         } catch (e: SecurityException) {
             DiagnosticLog.add(context, "Popup permission error: " + e.message)
@@ -225,7 +291,11 @@ object PopupOverlayUI {
         }
     }
 
-    private fun folderRow(context: Context, folder: String, accent: Int): LinearLayout {
+    private fun folderRow(
+        context: Context,
+        folder: String,
+        accent: Int
+    ): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -236,7 +306,13 @@ object PopupOverlayUI {
                 dp(context, 12),
                 dp(context, 8)
             )
-            background = roundedWithStroke(context, 14, SURFACE_ALT, GLASS_EDGE)
+            background = roundedWithStroke(
+                context,
+                14,
+                SURFACE_ALT,
+                GLASS_EDGE
+            )
+
             setOnClickListener {
                 FileMover.moveToFolder(
                     context,
@@ -248,10 +324,17 @@ object PopupOverlayUI {
 
             addView(
                 TextView(context).apply {
-                    text = folder.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "•"
+                    text =
+                        folder.trim().firstOrNull()
+                            ?.uppercaseChar()
+                            ?.toString()
+                            ?: "•"
                     setTextColor(DARK)
                     textSize = 12f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    typeface = Typeface.create(
+                        Typeface.DEFAULT,
+                        Typeface.BOLD
+                    )
                     gravity = Gravity.CENTER
                     background = rounded(context, 11, accent)
                     layoutParams = LinearLayout.LayoutParams(
@@ -266,8 +349,13 @@ object PopupOverlayUI {
                     text = folder
                     setTextColor(TEXT)
                     textSize = 13.5f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    setPadding(dp(context, 12), 0, 0, 0)
+                    typeface = Typeface.create(
+                        Typeface.DEFAULT,
+                        Typeface.BOLD
+                    )
+                    setPadding(dp(context, 12), 0, dp(context, 8), 0)
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
                     layoutParams = LinearLayout.LayoutParams(
                         0,
                         LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -287,30 +375,36 @@ object PopupOverlayUI {
         }
     }
 
-    private var currentScreenshotUri: Uri? = null
-
-    private fun spacer(context: Context, heightDp: Int): View =
-        View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(context, heightDp)
-            )
-        }
-
     fun dismiss() {
         dismissHandler.removeCallbacks(autoDismiss)
+
+        progressBar?.animate()?.cancel()
+        progressBar = null
         currentScreenshotUri = null
 
         overlayView?.let { view ->
             try {
                 val windowManager =
-                    view.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    view.context.getSystemService(
+                        Context.WINDOW_SERVICE
+                    ) as WindowManager
                 windowManager.removeView(view)
             } catch (_: Exception) {
             }
             overlayView = null
         }
     }
+
+    private fun spacer(
+        context: Context,
+        heightDp: Int
+    ): View =
+        View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(context, heightDp)
+            )
+        }
 
     private fun rounded(
         context: Context,
@@ -348,12 +442,7 @@ object PopupOverlayUI {
     private val PINK = Color.parseColor("#F6D6DE")
     private val ACCENTS = listOf(BLUE, TEAL, PINK, LAVENDER)
 
-    // Night glass: translucent when the blur is on, more opaque when it is not.
     private val GLASS_BLURRED = Color.parseColor("#A6221F45")
     private val GLASS_SOLID = Color.parseColor("#EB1E1B3C")
     private val GLASS_EDGE = Color.parseColor("#38FFFFFF")
-
-    init {
-        // no-op
-    }
 }
