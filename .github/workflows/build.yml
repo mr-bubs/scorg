@@ -12,6 +12,15 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
+    - name: Fetch pinned Mr Bubs mascot atlas
+      shell: bash
+      run: |
+        mkdir -p app/src/main/res/drawable-nodpi
+        curl -L --fail --retry 3 \
+          "https://raw.githubusercontent.com/mr-bubs/bubs-mascot/11db841a1d4a24f779b2a80f50816172e8b384b1/demo/public/mascots/bubs-reactions.webp" \
+          -o app/src/main/res/drawable-nodpi/bubs_reactions.webp
+        test -s app/src/main/res/drawable-nodpi/bubs_reactions.webp
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
