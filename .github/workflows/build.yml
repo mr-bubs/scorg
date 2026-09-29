@@ -2,7 +2,7 @@ name: Build Scorg APK
 
 on:
   push:
-    branches: [ "main", "diagnostic-screenshot-detection" ]
+    branches: [ "main", "diagnostic-screenshot-detection", "v1.1-pastel-ui" ]
 
 jobs:
   build:
