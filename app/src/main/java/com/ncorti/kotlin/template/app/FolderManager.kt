@@ -11,20 +11,27 @@ object FolderManager {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_FOLDERS, null)
             ?: return DEFAULT_FOLDERS
-        return raw.split("|").filter { it.isNotBlank() }
+
+        return raw.split("|")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
     }
 
     fun addFolder(context: Context, name: String): Boolean {
+        val clean = name.trim()
+        if (clean.isBlank()) return false
+
         val current = getFolders(context).toMutableList()
-        if (current.contains(name)) return false
-        current.add(name)
+        if (current.any { it.equals(clean, ignoreCase = true) }) return false
+
+        current.add(clean)
         save(context, current)
         return true
     }
 
     fun removeFolder(context: Context, name: String) {
         val current = getFolders(context).toMutableList()
-        current.remove(name)
+        current.removeAll { it.equals(name, ignoreCase = true) }
         save(context, current)
     }
 
