@@ -17,6 +17,7 @@ object FileMover {
 
             withContext(Dispatchers.Main) {
                 if (success) {
+                    BubsCelebrationOverlay.show(context)
                     Toast.makeText(
                         context,
                         "✅ Moved to " + folderName,
