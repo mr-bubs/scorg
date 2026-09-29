@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -31,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var readinessTitle: TextView
     private lateinit var readinessBody: TextView
     private lateinit var primaryButton: TextView
+    private lateinit var bubsPeek: ImageView
 
     private lateinit var popupStatus: TextView
     private lateinit var detectionStatus: TextView
@@ -233,7 +235,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(TEXT)
             textSize = 21f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(0, dp(12), 0, 0)
+            setPadding(0, dp(12), dp(76), 0)
         }
         card.addView(readinessTitle)
 
@@ -241,17 +243,54 @@ class MainActivity : AppCompatActivity() {
             setTextColor(FOLDER_BODY)
             textSize = 13.5f
             setLineSpacing(0f, 1.15f)
-            setPadding(0, dp(4), 0, dp(12))
+            setPadding(0, dp(4), dp(70), dp(12))
         }
         card.addView(readinessBody)
 
         primaryButton = button("Finish setup", TEXT, Color.WHITE) { checkAndStart() }
         card.addView(primaryButton)
 
-        return LinearLayout(this).apply {
+        val folder = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(folderTab())
             addView(card)
+        }
+
+        bubsPeek = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+            alpha = 0.96f
+
+            BubsMascotFrames.setReaction(
+                this@MainActivity,
+                this,
+                BubsMascotFrames.Reaction.NEUTRAL
+            )
+        }
+
+        return FrameLayout(this).apply {
+            clipChildren = false
+            clipToPadding = false
+
+            addView(
+                folder,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            addView(
+                bubsPeek,
+                FrameLayout.LayoutParams(
+                    dp(82),
+                    dp(82),
+                    Gravity.TOP or Gravity.END
+                ).apply {
+                    topMargin = -dp(24)
+                    marginEnd = dp(14)
+                }
+            )
         }
     }
 
@@ -605,6 +644,12 @@ class MainActivity : AppCompatActivity() {
 
         when {
             running -> {
+                bubsPeek.visibility = View.VISIBLE
+                BubsMascotFrames.setReaction(
+                    this,
+                    bubsPeek,
+                    BubsMascotFrames.Reaction.HAPPY
+                )
                 readinessPill.text = "●  ACTIVE"
                 readinessPill.setTextColor(TEXT)
                 readinessPill.background = rounded(18, SUCCESS)
@@ -616,6 +661,12 @@ class MainActivity : AppCompatActivity() {
             }
 
             ready -> {
+                bubsPeek.visibility = View.VISIBLE
+                BubsMascotFrames.setReaction(
+                    this,
+                    bubsPeek,
+                    BubsMascotFrames.Reaction.NEUTRAL
+                )
                 readinessPill.text = "●  READY"
                 readinessPill.setTextColor(TEXT)
                 readinessPill.background = rounded(18, TEAL)
@@ -627,6 +678,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             else -> {
+                bubsPeek.visibility = View.GONE
                 val missing = listOf(!popupOk, !detectionOk, !folderOk, !notificationOk).count { it }
                 readinessPill.text = "SETUP  ·  " + missing + " LEFT"
                 readinessPill.setTextColor(TEXT)
