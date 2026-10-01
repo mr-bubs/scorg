@@ -284,10 +284,13 @@ class MainActivity : AppCompatActivity() {
                 bubsPeek,
                 FrameLayout.LayoutParams(
                     dp(82),
-                    dp(82),
+                    dp(90),
                     Gravity.TOP or Gravity.END
                 ).apply {
-                    topMargin = -dp(24)
+                    // Keep Bubs the same visual size, but give the sprite
+                    // extra vertical room and shift him down so his hair
+                    // clears the top edge cleanly.
+                    topMargin = -dp(18)
                     marginEnd = dp(14)
                 }
             )
