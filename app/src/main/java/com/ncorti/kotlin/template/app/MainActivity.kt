@@ -33,6 +33,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var readinessBody: TextView
     private lateinit var primaryButton: TextView
     private lateinit var bubsPeek: ImageView
+    private lateinit var cleanTab: TextView
+    private lateinit var bubsTab: TextView
+    private lateinit var cleanFolderView: View
+    private lateinit var bubsFolderView: View
+    private lateinit var bubsModeToggle: TextView
 
     private lateinit var popupStatus: TextView
     private lateinit var detectionStatus: TextView
@@ -174,22 +179,18 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val logoWrap = LinearLayout(this).apply {
-            gravity = Gravity.CENTER
-            background = rounded(18, LILAC)
-            layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
-        }
-
-        logoWrap.addView(
+        row.addView(
             ImageView(this).apply {
-                setImageResource(R.drawable.ic_scorg)
-                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
+                setImageResource(R.drawable.scorg_s_mark)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = "SCORG"
+                layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
             }
         )
 
         val copy = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), 0, 0, 0)
+            setPadding(dp(14), 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -208,19 +209,80 @@ class MainActivity : AppCompatActivity() {
 
         copy.addView(
             TextView(this).apply {
-                text = "Screenshots, sorted instantly."
+                text = "Screenshots in their place."
                 setTextColor(MUTED)
                 textSize = 13.5f
                 setPadding(0, dp(2), 0, 0)
             }
         )
 
-        row.addView(logoWrap)
         row.addView(copy)
         return row
     }
 
     private fun buildReadinessCard(): View {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+        }
+
+        cleanTab = folderModeTab("Clean") {
+            showTopFolder(bubs = false)
+        }
+        bubsTab = folderModeTab("Bubs Mode") {
+            showTopFolder(bubs = true)
+        }
+
+        tabs.addView(
+            cleanTab,
+            LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                marginEnd = dp(4)
+            }
+        )
+        tabs.addView(
+            bubsTab,
+            LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                marginStart = dp(4)
+            }
+        )
+
+        root.addView(tabs)
+
+        val host = FrameLayout(this).apply {
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        cleanFolderView = buildCleanFolder()
+        bubsFolderView = buildBubsFolder()
+
+        host.addView(
+            cleanFolderView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        host.addView(
+            bubsFolderView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(host)
+        showTopFolder(bubs = false)
+
+        return root
+    }
+
+    private fun buildCleanFolder(): View {
         val card = folderCard()
 
         readinessPill = TextView(this).apply {
@@ -247,25 +309,19 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(readinessBody)
 
-        primaryButton = button("Finish setup", TEXT, Color.WHITE) { checkAndStart() }
-        card.addView(primaryButton)
-
-        val folder = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(folderTab())
-            addView(card)
+        primaryButton = button(
+            "Finish setup",
+            TEXT,
+            Color.WHITE
+        ) {
+            checkAndStart()
         }
+        card.addView(primaryButton)
 
         bubsPeek = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             visibility = View.GONE
             alpha = 0.96f
-
-            BubsMascotFrames.setReaction(
-                this@MainActivity,
-                this,
-                BubsMascotFrames.Reaction.NEUTRAL
-            )
         }
 
         return FrameLayout(this).apply {
@@ -273,7 +329,7 @@ class MainActivity : AppCompatActivity() {
             clipToPadding = false
 
             addView(
-                folder,
+                card,
                 FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT
@@ -287,12 +343,261 @@ class MainActivity : AppCompatActivity() {
                     dp(90),
                     Gravity.TOP or Gravity.END
                 ).apply {
-                    // Keep Bubs the same visual size, but give the sprite
-                    // extra vertical room and shift him down so his hair
-                    // clears the top edge cleanly.
-                    topMargin = -dp(18)
+                    topMargin = -dp(10)
                     marginEnd = dp(14)
                 }
+            )
+        }
+    }
+
+    private fun buildBubsFolder(): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = rounded(20, LILAC)
+        }
+
+        card.addView(
+            TextView(this).apply {
+                text = "Bubs Mode"
+                setTextColor(TEXT)
+                textSize = 21f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+        )
+
+        card.addView(
+            TextView(this).apply {
+                text = "Your screenshots. His opinions."
+                setTextColor(FOLDER_BODY)
+                textSize = 13.5f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                setPadding(0, dp(4), 0, 0)
+            }
+        )
+
+        card.addView(
+            TextView(this).apply {
+                text = "Turn it on and Mr Bubs will occasionally appear when you take screenshots, reacting to your screenshot habits while Scorg keeps everything sorted."
+                setTextColor(MUTED)
+                textSize = 12.5f
+                setLineSpacing(0f, 1.12f)
+                setPadding(0, dp(8), 0, dp(14))
+            }
+        )
+
+        bubsModeToggle = TextView(this).apply {
+            textSize = 13.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            minimumHeight = dp(48)
+            setOnClickListener {
+                val enabled = !BubsModeManager.isEnabled(this@MainActivity)
+                BubsModeManager.setEnabled(this@MainActivity, enabled)
+                refreshBubsModeUi()
+                refreshUi()
+                toast(
+                    if (enabled) "Bubs Mode enabled. He is watching."
+                    else "Bubs Mode disabled. Peace restored."
+                )
+            }
+        }
+        card.addView(bubsModeToggle)
+
+        card.addView(
+            TextView(this).apply {
+                text = "MEET THE MOODS"
+                setTextColor(MUTED)
+                textSize = 10.5f
+                letterSpacing = 0.10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                setPadding(0, dp(18), 0, dp(8))
+            }
+        )
+
+        val moods = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        moods.addView(
+            moodPreview(
+                "Pleased",
+                BubsMascotFrames.Reaction.HAPPY,
+                TEAL
+            ),
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        moods.addView(
+            moodPreview(
+                "Suspicious",
+                BubsMascotFrames.Reaction.THINKING,
+                BLUE
+            ),
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        moods.addView(
+            moodPreview(
+                "Sleepy",
+                BubsMascotFrames.Reaction.SLEEPY,
+                TURQUOISE
+            ),
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        moods.addView(
+            moodPreview(
+                "Judging",
+                BubsMascotFrames.Reaction.ANNOYED,
+                LAVENDER
+            ),
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        card.addView(moods)
+
+        card.addView(
+            TextView(this).apply {
+                text = "WHAT MAKES BUBS REACT?"
+                setTextColor(MUTED)
+                textSize = 10.5f
+                letterSpacing = 0.10f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                setPadding(0, dp(18), 0, dp(8))
+            }
+        )
+
+        card.addView(
+            TextView(this).apply {
+                text = "First screenshot in a while  →  pleased\n" +
+                    "Several screenshots quickly  →  suspicious\n" +
+                    "Late-night screenshots  →  sleepy\n" +
+                    "Screenshot spree  →  judgmental"
+                setTextColor(FOLDER_BODY)
+                textSize = 12f
+                setLineSpacing(dp(2).toFloat(), 1f)
+            }
+        )
+
+        card.addView(
+            TextView(this).apply {
+                text = "Bubs judges your habits, not your screenshots. Reactions use timing and frequency only."
+                setTextColor(TEXT)
+                textSize = 11.5f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = rounded(14, SUCCESS)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp(16)
+                }
+            }
+        )
+
+        refreshBubsModeUi()
+        return card
+    }
+
+    private fun moodPreview(
+        label: String,
+        reaction: BubsMascotFrames.Reaction,
+        accent: Int
+    ): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(2), dp(4), dp(2), dp(4))
+
+            val image = ImageView(this@MainActivity).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                background = rounded(12, accent)
+                setPadding(dp(3), dp(3), dp(3), dp(3))
+            }
+
+            BubsMascotFrames.setReaction(
+                this@MainActivity,
+                image,
+                reaction
+            )
+
+            addView(
+                image,
+                LinearLayout.LayoutParams(dp(54), dp(58))
+            )
+
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = label
+                    setTextColor(TEXT)
+                    textSize = 10f
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    setPadding(0, dp(4), 0, 0)
+                }
+            )
+        }
+    }
+
+    private fun folderModeTab(
+        label: String,
+        onClick: () -> Unit
+    ): TextView =
+        TextView(this).apply {
+            text = label
+            setTextColor(TEXT)
+            textSize = 12.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setOnClickListener { onClick() }
+        }
+
+    private fun showTopFolder(bubs: Boolean) {
+        if (!::cleanFolderView.isInitialized) return
+
+        cleanFolderView.visibility = if (bubs) View.GONE else View.VISIBLE
+        bubsFolderView.visibility = if (bubs) View.VISIBLE else View.GONE
+
+        cleanTab.background = topFolderTabShape(
+            if (bubs) LILAC_DEEP else LAVENDER
+        )
+        bubsTab.background = topFolderTabShape(
+            if (bubs) LILAC else Color.parseColor("#D8D2EC")
+        )
+
+        cleanTab.alpha = if (bubs) 0.72f else 1f
+        bubsTab.alpha = if (bubs) 1f else 0.72f
+    }
+
+    private fun refreshBubsModeUi() {
+        if (!::bubsModeToggle.isInitialized) return
+
+        val enabled = BubsModeManager.isEnabled(this)
+
+        bubsModeToggle.text =
+            if (enabled) "Bubs Mode  ·  ON"
+            else "Bubs Mode  ·  OFF"
+
+        bubsModeToggle.setTextColor(TEXT)
+        bubsModeToggle.background = rounded(
+            14,
+            if (enabled) TEAL else SURFACE
+        )
+    }
+
+    private fun topFolderTabShape(color: Int): GradientDrawable {
+        val r = dp(14).toFloat()
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadii = floatArrayOf(
+                r, r,
+                r, r,
+                0f, 0f,
+                0f, 0f
             )
         }
     }
@@ -647,12 +952,16 @@ class MainActivity : AppCompatActivity() {
 
         when {
             running -> {
-                bubsPeek.visibility = View.VISIBLE
-                BubsMascotFrames.setReaction(
-                    this,
-                    bubsPeek,
-                    BubsMascotFrames.Reaction.HAPPY
-                )
+                if (BubsModeManager.isEnabled(this)) {
+                    bubsPeek.visibility = View.VISIBLE
+                    BubsMascotFrames.setReaction(
+                        this,
+                        bubsPeek,
+                        BubsMascotFrames.Reaction.HAPPY
+                    )
+                } else {
+                    bubsPeek.visibility = View.GONE
+                }
                 readinessPill.text = "●  ACTIVE"
                 readinessPill.setTextColor(TEXT)
                 readinessPill.background = rounded(18, SUCCESS)
@@ -664,12 +973,16 @@ class MainActivity : AppCompatActivity() {
             }
 
             ready -> {
-                bubsPeek.visibility = View.VISIBLE
-                BubsMascotFrames.setReaction(
-                    this,
-                    bubsPeek,
-                    BubsMascotFrames.Reaction.NEUTRAL
-                )
+                if (BubsModeManager.isEnabled(this)) {
+                    bubsPeek.visibility = View.VISIBLE
+                    BubsMascotFrames.setReaction(
+                        this,
+                        bubsPeek,
+                        BubsMascotFrames.Reaction.NEUTRAL
+                    )
+                } else {
+                    bubsPeek.visibility = View.GONE
+                }
                 readinessPill.text = "●  READY"
                 readinessPill.setTextColor(TEXT)
                 readinessPill.background = rounded(18, TEAL)
@@ -694,6 +1007,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        refreshBubsModeUi()
         refreshCategories()
     }
 
