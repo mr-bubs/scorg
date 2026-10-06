@@ -15,6 +15,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -30,7 +31,11 @@ object PopupOverlayUI {
     private val autoDismiss = Runnable { dismiss() }
 
     @Suppress("DEPRECATION")
-    fun show(context: Context, screenshotUri: Uri) {
+    fun show(
+        context: Context,
+        screenshotUri: Uri,
+        judgment: BubsModeManager.Judgment? = null
+    ) {
         dismiss()
         currentScreenshotUri = screenshotUri
 
@@ -58,6 +63,65 @@ object PopupOverlayUI {
                 GLASS_EDGE
             )
             elevation = dp(context, 10).toFloat()
+        }
+
+        if (judgment != null) {
+            val reactionRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(
+                    dp(context, 10),
+                    dp(context, 8),
+                    dp(context, 10),
+                    dp(context, 8)
+                )
+                background = roundedWithStroke(
+                    context,
+                    16,
+                    Color.parseColor("#18FFFFFF"),
+                    GLASS_EDGE
+                )
+            }
+
+            val bubs = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+
+            BubsMascotFrames.setReaction(
+                context,
+                bubs,
+                judgment.reaction
+            )
+
+            reactionRow.addView(
+                bubs,
+                LinearLayout.LayoutParams(
+                    dp(context, 52),
+                    dp(context, 58)
+                )
+            )
+
+            reactionRow.addView(
+                TextView(context).apply {
+                    text = judgment.message
+                    setTextColor(TEXT)
+                    textSize = 12.5f
+                    typeface = Typeface.create(
+                        Typeface.DEFAULT,
+                        Typeface.BOLD
+                    )
+                    maxLines = 2
+                    setPadding(dp(context, 10), 0, 0, 0)
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
+                }
+            )
+
+            container.addView(reactionRow)
+            container.addView(spacer(context, 10))
         }
 
         container.addView(
