@@ -25,15 +25,19 @@ class ScreenshotDetectorService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
 
         mediaObserver = MediaObserver(this, handler) { uri ->
-            if (BubsModeManager.isEnabled(this)) {
-                BubsJudgmentOverlay.show(
-                    this,
+            val judgment =
+                if (BubsModeManager.isEnabled(this)) {
                     BubsModeManager.nextJudgment(this)
-                )
-            }
+                } else {
+                    null
+                }
 
             try {
-                PopupOverlayUI.show(this, uri)
+                PopupOverlayUI.show(
+                    this,
+                    uri,
+                    judgment
+                )
             } catch (t: Throwable) {
                 DiagnosticLog.add(
                     this,
