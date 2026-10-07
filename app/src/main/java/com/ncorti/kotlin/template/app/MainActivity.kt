@@ -3,6 +3,8 @@ package com.ncorti.kotlin.template.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -181,9 +183,26 @@ class MainActivity : AppCompatActivity() {
 
         row.addView(
             ImageView(this).apply {
-                setImageResource(R.drawable.scorg_header_mark_rgba)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 contentDescription = "SCORG"
+                alpha = 1f
+                visibility = View.VISIBLE
+                imageTintList = null
+                setBackgroundColor(Color.TRANSPARENT)
+
+                val logo = decodeHeaderLogo()
+                if (logo != null) {
+                    setImageBitmap(logo)
+                } else {
+                    // Keep a resource fallback, but log the failure so we
+                    // never have to guess about an invisible header again.
+                    setImageResource(R.drawable.scorg_header_mark_v4)
+                    DiagnosticLog.add(
+                        this@MainActivity,
+                        "Header logo decode FAILED; resource fallback applied"
+                    )
+                }
+
                 layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
             }
         )
@@ -218,6 +237,71 @@ class MainActivity : AppCompatActivity() {
 
         row.addView(copy)
         return row
+    }
+
+    private fun decodeHeaderLogo(): Bitmap? {
+        return runCatching {
+            val bytes = resources.openRawResource(
+                R.drawable.scorg_header_mark_v4
+            ).use { input ->
+                input.readBytes()
+            }
+
+            val options = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+
+            val decoded = BitmapFactory.decodeByteArray(
+                bytes,
+                0,
+                bytes.size,
+                options
+            ) ?: error("BitmapFactory returned null")
+
+            val safeBitmap =
+                if (decoded.config == Bitmap.Config.ARGB_8888) {
+                    decoded
+                } else {
+                    decoded.copy(Bitmap.Config.ARGB_8888, false)
+                        ?: error("ARGB_8888 copy failed")
+                }
+
+            val pixels = IntArray(
+                safeBitmap.width * safeBitmap.height
+            )
+            safeBitmap.getPixels(
+                pixels,
+                0,
+                safeBitmap.width,
+                0,
+                0,
+                safeBitmap.width,
+                safeBitmap.height
+            )
+
+            val visiblePixels = pixels.count { pixel ->
+                Color.alpha(pixel) > 0
+            }
+
+            DiagnosticLog.add(
+                this,
+                "Header logo decoded " +
+                    "${safeBitmap.width}x${safeBitmap.height} " +
+                    "bytes=${bytes.size} visiblePixels=$visiblePixels"
+            )
+
+            if (visiblePixels == 0) {
+                error("Decoded header contains no visible pixels")
+            }
+
+            safeBitmap
+        }.onFailure { error ->
+            DiagnosticLog.add(
+                this,
+                "Header logo decode error: " +
+                    "${error.javaClass.simpleName}: ${error.message}"
+            )
+        }.getOrNull()
     }
 
     private fun buildReadinessCard(): View {
