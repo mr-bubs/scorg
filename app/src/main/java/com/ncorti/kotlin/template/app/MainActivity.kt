@@ -181,7 +181,7 @@ class MainActivity : AppCompatActivity() {
 
         row.addView(
             ImageView(this).apply {
-                setImageResource(R.drawable.scorg_s_mark)
+                setImageResource(R.drawable.scorg_header_mark_v4)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 contentDescription = "SCORG"
                 layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
