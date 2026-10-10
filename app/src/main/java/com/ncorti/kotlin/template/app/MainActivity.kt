@@ -892,11 +892,14 @@ class MainActivity : AppCompatActivity() {
 
         diagnosticsContainer.addView(
             compactButton("Scan screenshots folder") {
-                val intent = Intent(this, ScreenshotDetectorService::class.java).apply {
-                    action = ScreenshotDetectorService.ACTION_SCAN_NOW
+                if (!ScreenshotDetectorService.isRunning) {
+                    toast("Start watching before running a manual scan.")
+                } else {
+                    val intent = Intent(this, ScreenshotDetectorService::class.java).apply {
+                        action = ScreenshotDetectorService.ACTION_SCAN_NOW
+                    }
+                    startService(intent)
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
-                else startService(intent)
             }
         )
 
