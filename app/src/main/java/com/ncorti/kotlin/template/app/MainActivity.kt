@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
             WatcherRecovery.missingRequirement(this) == null
         ) {
             val now = SystemClock.elapsedRealtime()
-            if (now - lastWatcherRestoreAttemptAt > 15_000L) {
+            if (lastWatcherRestoreAttemptAt == 0L || now - lastWatcherRestoreAttemptAt > 15_000L) {
                 lastWatcherRestoreAttemptAt = now
                 DiagnosticLog.add(this, "App resumed: restoring requested watcher")
                 startScorgService(restoring = true)
@@ -897,6 +897,33 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
                 else startService(intent)
+            }
+        )
+
+        diagnosticsContainer.addView(space(8))
+
+        diagnosticsContainer.addView(
+            compactButton("Open battery & background settings") {
+                // Vendor settings differ; App info lets users reach battery controls.
+                try {
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:" + packageName)
+                        )
+                    )
+                } catch (t: Throwable) {
+                    toast("Open Scorg in Android Settings and allow unrestricted battery use.")
+                }
+            }
+        )
+
+        diagnosticsContainer.addView(
+            TextView(this).apply {
+                text = "For Xiaomi/HyperOS: App info → Battery saver → No restrictions, and enable Autostart. Android may still stop background apps."
+                setTextColor(MUTED)
+                textSize = 11f
+                setPadding(dp(4), dp(6), dp(4), dp(6))
             }
         )
 
