@@ -3,6 +3,8 @@ name: Build Scorg APK
 on:
   push:
     branches: [ "main", "diagnostic-screenshot-detection", "v1.1-pastel-ui" ]
+  pull_request:
+    branches: [ "diagnostic-screenshot-detection" ]
 
 jobs:
   build:
@@ -28,6 +30,7 @@ jobs:
         distribution: 'temurin'
 
     - name: Restore stable Scorg debug keystore
+      if: github.event_name == 'push'
       uses: actions/cache@v4
       with:
         path: .signing/scorg-debug.keystore
@@ -56,6 +59,7 @@ jobs:
       run: ./gradlew assembleDebug -x lint -x detekt
 
     - name: Upload APK
+      if: github.event_name == 'push'
       uses: actions/upload-artifact@v4
       with:
         name: Scorg-App
