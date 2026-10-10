@@ -96,8 +96,8 @@ class ScreenshotDetectorService : Service() {
         }
 
         val requested = WatcherPreferences.isWatchingRequested(this)
-        if (!requested && action != ACTION_SCAN_NOW) {
-            DiagnosticLog.add(this, "Watcher not enabled; skip restore")
+        if (!requested) {
+            DiagnosticLog.add(this, "Watcher not enabled; skip command/restore")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -118,7 +118,7 @@ class ScreenshotDetectorService : Service() {
             if (::mediaObserver.isInitialized) mediaObserver.scanNow()
         }
 
-        return if (requested) START_STICKY else START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
