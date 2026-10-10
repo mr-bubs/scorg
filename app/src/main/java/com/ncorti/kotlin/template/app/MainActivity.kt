@@ -12,6 +12,7 @@ import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var diagnosticText: TextView
 
     private var continueStartAfterFolderPicker = false
+    private var lastWatcherRestoreAttemptAt = 0L
 
     private val overlayLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -111,6 +113,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WatcherRecovery.logPreviousExit(this)
 
         window.statusBarColor = BG
         window.navigationBarColor = BG
@@ -127,6 +130,22 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+
+        // A visible activity is allowed to restore a user-enabled watcher.
+        // Don't try to start a foreground service repeatedly from background.
+        if (
+            WatcherPreferences.isWatchingRequested(this) &&
+            !ScreenshotDetectorService.isRunning &&
+            WatcherRecovery.missingRequirement(this) == null
+        ) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastWatcherRestoreAttemptAt > 15_000L) {
+                lastWatcherRestoreAttemptAt = now
+                DiagnosticLog.add(this, "App resumed: restoring requested watcher")
+                startScorgService(restoring = true)
+            }
+        }
+
         if (::readinessTitle.isInitialized) {
             refreshUi()
             if (diagnosticsContainer.visibility == View.VISIBLE) refreshDiagnostics()
@@ -398,7 +417,11 @@ class MainActivity : AppCompatActivity() {
             TEXT,
             Color.WHITE
         ) {
-            checkAndStart()
+            if (ScreenshotDetectorService.isRunning) {
+                stopScorgService()
+            } else {
+                checkAndStart()
+            }
         }
         card.addView(primaryButton)
 
@@ -1051,7 +1074,7 @@ class MainActivity : AppCompatActivity() {
                 readinessPill.background = rounded(18, SUCCESS)
                 readinessTitle.text = "Everything is in its place"
                 readinessBody.text = "Scorg is watching quietly. Take a screenshot anywhere and sort it in one tap."
-                primaryButton.text = "Watcher active"
+                primaryButton.text = "Stop watching"
                 primaryButton.background = rounded(14, SUCCESS)
                 primaryButton.setTextColor(TEXT)
             }
@@ -1274,12 +1297,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startScorgService() {
-        val intent = Intent(this, ScreenshotDetectorService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
-        else startService(intent)
+    private fun startScorgService(restoring: Boolean = false) {
+        val intent = Intent(this, ScreenshotDetectorService::class.java).apply {
+            action = if (restoring) {
+                ScreenshotDetectorService.ACTION_RESTORE
+            } else {
+                ScreenshotDetectorService.ACTION_START
+            }
+        }
 
-        toast("Scorg is watching for screenshots.")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+            else startService(intent)
+
+            if (!restoring) toast("Scorg is watching for screenshots.")
+        } catch (t: Throwable) {
+            DiagnosticLog.add(
+                this,
+                "Watcher start failed: ${t.javaClass.simpleName}: ${t.message}"
+            )
+            if (!restoring) toast("Android blocked watcher start. Check battery and app settings.")
+        }
+
+        primaryButton.postDelayed({ refreshUi() }, 300L)
+    }
+
+    private fun stopScorgService() {
+        WatcherPreferences.setWatchingRequested(this, false)
+        stopService(Intent(this, ScreenshotDetectorService::class.java))
+        DiagnosticLog.add(this, "Watcher stopped in Scorg (user request)")
+        toast("Screenshot watching stopped.")
         primaryButton.postDelayed({ refreshUi() }, 250L)
     }
 
